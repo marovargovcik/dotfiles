@@ -1,0 +1,61 @@
+[theme]
+theme = "gruvbox-dark"
+
+[icons]
+icons = "material-nf"
+
+[[block]]
+block = "net"
+device = "wlp1s0f0"
+format = " $icon $ssid "
+interval = 5
+
+[[block.click]]
+button = "left"
+cmd = "foot impala"
+
+[[block]]
+block = "battery"
+device = "macsmc-battery"
+format = " $icon $percentage "
+full_format = " $icon $percentage "
+interval = 30
+
+[[block]]
+block = "custom"
+command = "scr=$(cat /sys/class/backlight/apple-panel-bl/brightness); max=$(cat /sys/class/backlight/apple-panel-bl/max_brightness); kbd=$(cat /sys/class/leds/kbd_backlight/brightness); printf '󰃟 %d%% 󰌌 %d%%' $((scr*100/max)) $((kbd*100/255))"
+interval = 1
+format = " $text "
+
+[[block]]
+block = "keyboard_layout"
+driver = "sway"
+format = "$layout"
+[block.mappings]
+"English (US)" = "US"
+"Slovak (QWERTY)" = "SK"
+
+[[block]]
+block = "sound"
+driver = "pulseaudio"
+format = "$icon {$volume.eng(w:2)|—}"
+max_vol = 100
+
+[[block.click]]
+button = "left"
+cmd = "foot wiremix"
+
+[[block]]
+block = "time"
+format = " $timestamp.datetime(f:'%d %b %Y %H:%M') "
+interval = 60
+
+[[block]]
+block = "custom"
+command = "echo '󰐥'"
+interval = "once"
+format = " $text "
+
+[[block.click]]
+button = "left"
+cmd = "power-menu"

@@ -1,0 +1,22 @@
+#!/bin/sh
+file="$1"
+w="$2"
+h="$3"
+
+mime=$(file -Lb --mime-type "$file")
+
+case "$mime" in
+    image/*)
+        chafa --size="${w}x${h}" "$file"
+        ;;
+    application/pdf)
+        pdftoppm -f 1 -l 1 -r 72 -singlefile -png "$file" /tmp/lf-preview 2>/dev/null
+        chafa --size="${w}x${h}" /tmp/lf-preview.png
+        ;;
+    text/*|application/json|application/javascript|application/xml)
+        bat --color=always --style=numbers --line-range=:200 "$file"
+        ;;
+    *)
+        file -b "$file"
+        ;;
+esac

@@ -1,0 +1,40 @@
+# UI
+set icons false
+set drawbox false
+set ratios 1:2
+set info size
+set timefmt "2006-01-02 15:04"
+
+# Preview
+set previewer ~/.config/lf/preview
+set cleaner true
+
+# Navigation
+map h updir
+map l open
+map g top
+map G bottom
+map H high
+map M middle
+map L low
+map J half-down
+map K half-up
+
+# Go to common dirs
+map gh cd ~
+map gc cd ~/.config
+map gd cd ~/dotfiles
+
+# File operations
+map <delete> delete
+map x cut
+map y copy
+map p paste
+map r rename
+map a push %mkdir<space>
+
+# Open with nvim
+map e $$EDITOR "$f"
+
+# Quit
+map q quit
