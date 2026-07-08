@@ -47,3 +47,12 @@ eval "$(/home/maro/.local/bin/mise activate bash --shims)"
 # zoxide — must be last
 eval "$(zoxide init bash)"
 alias cd='z'
+
+# coursier
+export PATH="$PATH:/home/maro/.local/share/coursier/bin"
+
+# sbt workaround until sbt/ipc is fixed
+# alias sbt='sbt -Dsbt.ipcsocket.tmpdir=/tmp'
+
+# direnv
+eval "$(direnv hook bash)"

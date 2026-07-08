@@ -5,6 +5,16 @@ theme = "gruvbox-dark"
 icons = "material-nf"
 
 [[block]]
+block = "custom"
+command = "bt-status"
+interval = 3
+format = " $text "
+
+[[block.click]]
+button = "left"
+cmd = "foot bluetui"
+
+[[block]]
 block = "net"
 device = "wlp1s0f0"
 format = " $icon $ssid "
@@ -13,6 +23,16 @@ interval = 5
 [[block.click]]
 button = "left"
 cmd = "foot impala"
+
+[[block]]
+block = "custom"
+command = "wg-status"
+interval = 5
+format = " $text "
+
+[[block.click]]
+button = "left"
+cmd = "wg-menu"
 
 [[block]]
 block = "battery"
