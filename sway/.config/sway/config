@@ -231,9 +231,9 @@ exec gnome-keyring-daemon --start --daemonize --components=secrets,pkcs11
 
 # Idle / lock
 exec swayidle -w \
-    timeout 60  'swaylock -f -c 000000 --indicator-idle-visible' \
-    timeout 120 'sh -c "pgrep -x swaylock >/dev/null && [ closed = \"$(cat /run/acpi-lid-state 2>/dev/null)\" ] && sudo -n zzz"' \
-    timeout 300 'sudo -n zzz'
+    timeout 60  'sh -c "date \"+%F %T  IDLE-LOCK\" >> /var/log/power.log; swaylock -f -c 000000 --indicator-idle-visible"' \
+    timeout 120 'sh -c "pgrep -x swaylock >/dev/null && [ closed = \"$(cat /run/acpi-lid-state 2>/dev/null)\" ] && { date \"+%F %T  IDLE-SUSPEND(closed)\" >> /var/log/power.log; sudo -n zzz; }"' \
+    timeout 300 'sh -c "date \"+%F %T  IDLE-SUSPEND\" >> /var/log/power.log; sudo -n zzz"'
 
 # Clipboard manager
 exec wl-paste -t text --watch clipman store
