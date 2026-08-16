@@ -1,0 +1,8 @@
+#!/bin/sh
+choice=$(printf 'lock\nsleep\nrestart\npower-off' | fuzzel -d --no-exit-on-keyboard-focus-loss)
+case "$choice" in
+    lock)      swaylock -f -c 000000 ;;
+    sleep)     swaylock -f -c 000000 & sleep 1 && sudo zzz ;;
+    restart)   sudo reboot ;;
+    power-off) sudo poweroff ;;
+esac

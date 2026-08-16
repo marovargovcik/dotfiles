@@ -1,0 +1,9 @@
+#!/bin/bash
+
+connected=$(bluetoothctl devices Connected 2>/dev/null | head -1)
+if [ -z "$connected" ]; then
+    echo "󰂯"
+else
+    name=$(echo "$connected" | cut -d' ' -f3-)
+    echo "󰂱 $name"
+fi

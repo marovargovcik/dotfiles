@@ -1,0 +1,8 @@
+# Stow ignores these when linking packages into $HOME.
+# Anchored patterns (^/...) match at the package root; others match any path segment.
+^/\.git$
+^/\.gitignore$
+^/README.*
+\.bak.*
+.*~
+\.swp$

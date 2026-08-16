@@ -1,0 +1,27 @@
+#!/bin/bash
+active=$(sudo wg show interfaces 2>/dev/null | tr ' ' '\n')
+
+items=()
+for conf in "$HOME/.config/wireguard/"*.conf; do
+    [ -f "$conf" ] || continue
+    name=$(basename "$conf" .conf)
+    if echo "$active" | grep -qx "$name"; then
+        items+=("[connected] $name")
+    else
+        items+=("$name")
+    fi
+done
+
+[ ${#items[@]} -eq 0 ] && exit 0
+
+selected=$(printf '%s\n' "${items[@]}" | fuzzel -d --no-exit-on-keyboard-focus-loss)
+[ -z "$selected" ] && exit 0
+
+tunnel=$(echo "$selected" | sed 's/^\[connected\] //')
+conf="$HOME/.config/wireguard/$tunnel.conf"
+
+if echo "$active" | grep -qx "$tunnel"; then
+    sudo wg-quick down "$conf"
+else
+    sudo wg-quick up "$conf"
+fi

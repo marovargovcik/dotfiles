@@ -1,0 +1,4 @@
+#!/bin/sh
+socket="$XDG_RUNTIME_DIR/pulse/native"
+until [ -S "$socket" ]; do sleep 0.2; done
+exec i3status-rs ~/.config/i3status-rust/config.toml

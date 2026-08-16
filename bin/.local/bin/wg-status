@@ -1,0 +1,7 @@
+#!/bin/bash
+active=$(sudo wg show interfaces 2>/dev/null)
+if [ -n "$active" ]; then
+    echo "VPN $active"
+else
+    echo "VPN off"
+fi

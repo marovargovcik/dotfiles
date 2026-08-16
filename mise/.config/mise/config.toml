@@ -1,0 +1,5 @@
+[tools]
+java = "temurin-26"
+node = "26"
+sbt = "1.12.11"
+usage = "latest"
