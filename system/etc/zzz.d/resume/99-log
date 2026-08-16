@@ -1,0 +1,5 @@
+#!/bin/sh
+# /etc/zzz.d/resume/99-log — runs immediately after resume.
+printf '%s  RESUME   lid=%s\n' \
+    "$(date '+%F %T')" "$(cat /run/acpi-lid-state 2>/dev/null || echo '?')" \
+    >> /var/log/power.log

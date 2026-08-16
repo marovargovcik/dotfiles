@@ -1,0 +1,5 @@
+#!/bin/sh
+# /etc/zzz.d/suspend/00-log — runs immediately before suspend.
+printf '%s  SUSPEND  lid=%s\n' \
+    "$(date '+%F %T')" "$(cat /run/acpi-lid-state 2>/dev/null || echo '?')" \
+    >> /var/log/power.log

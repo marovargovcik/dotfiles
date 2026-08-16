@@ -1,0 +1,4 @@
+# RECONSTRUCTED from linux-setup.md — the live /etc/sudoers.d/reboot is mode 0440
+# root:root and could not be read to copy verbatim. Verify against the original
+# before trusting this on a rebuild.
+maro ALL=(root) NOPASSWD: /usr/bin/reboot
