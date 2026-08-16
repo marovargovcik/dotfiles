@@ -3,6 +3,14 @@
 # If not running interactively, don't do anything
 [[ $- != *i* ]] && return
 
+# History — append instead of overwriting, so concurrent shells don't clobber
+# each other on exit (bash's default truncates the file to the last session).
+shopt -s histappend
+HISTSIZE=100000
+HISTFILESIZE=200000
+HISTCONTROL=ignoreboth
+HISTTIMEFORMAT='%F %T '
+
 # eza replaces ls
 alias ls='eza'
 alias ll='eza -lh'
