@@ -16,7 +16,7 @@ alias lg='lazygit'
 set -o vi
 export EDITOR=nvim
 export VISUAL=nvim
-export PATH="$PATH:$HOME/.local/share/coursier/bin"
+export PATH="$HOME/.local/bin:$PATH:$HOME/.local/share/coursier/bin"
 
 [ -f /usr/share/bash-completion/bash_completion ] && source /usr/share/bash-completion/bash_completion
 [ -f /usr/share/fzf/key-bindings.bash ] && source /usr/share/fzf/key-bindings.bash
