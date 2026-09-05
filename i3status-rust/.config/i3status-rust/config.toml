@@ -16,7 +16,6 @@ cmd = "foot bluetui"
 
 [[block]]
 block = "net"
-device = "wlp1s0f0"
 format = " $icon $ssid "
 interval = 5
 
@@ -36,14 +35,14 @@ cmd = "wg-menu"
 
 [[block]]
 block = "battery"
-device = "macsmc-battery"
+device = "BAT0"
 format = " $icon $percentage "
 full_format = " $icon $percentage "
 interval = 30
 
 [[block]]
 block = "custom"
-command = "scr=$(cat /sys/class/backlight/apple-panel-bl/brightness); max=$(cat /sys/class/backlight/apple-panel-bl/max_brightness); kbd=$(cat /sys/class/leds/kbd_backlight/brightness); printf '󰃟 %d%% 󰌌 %d%%' $((scr*100/max)) $((kbd*100/255))"
+command = "scr=$(cat /sys/class/backlight/intel_backlight/brightness); max=$(cat /sys/class/backlight/intel_backlight/max_brightness); kbd=$(cat /sys/class/leds/tpacpi::kbd_backlight/brightness); printf '󰃟 %d%% 󰌌 %d/2' $((scr*100/max)) $kbd"
 interval = 1
 format = " $text "
 

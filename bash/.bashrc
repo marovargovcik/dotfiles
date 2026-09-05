@@ -1,44 +1,27 @@
-# .bashrc
-
-# If not running interactively, don't do anything
 [[ $- != *i* ]] && return
 
-# History — append instead of overwriting, so concurrent shells don't clobber
-# each other on exit (bash's default truncates the file to the last session).
 shopt -s histappend
 HISTSIZE=100000
 HISTFILESIZE=200000
 HISTCONTROL=ignoreboth
 HISTTIMEFORMAT='%F %T '
 
-# eza replaces ls
 alias ls='eza'
 alias ll='eza -lh'
 alias la='eza -lha'
 alias lt='eza --tree'
-
-# bat replaces cat
 alias cat='bat'
-
-# lazygit
 alias lg='lazygit'
 
 set -o vi
 export EDITOR=nvim
 export VISUAL=nvim
+export PATH="$PATH:$HOME/.local/share/coursier/bin"
 
-# bash-completion
 [ -f /usr/share/bash-completion/bash_completion ] && source /usr/share/bash-completion/bash_completion
-
-# fzf
 [ -f /usr/share/fzf/key-bindings.bash ] && source /usr/share/fzf/key-bindings.bash
 [ -f /usr/share/fzf/completion.bash ] && source /usr/share/fzf/completion.bash
 
-
-# starship
-eval "$(starship init bash)"
-
-# lf — cd to last dir on exit
 lf() {
     local tmp="$(mktemp)"
     command lf -last-dir-path="$tmp" "$@"
@@ -49,18 +32,10 @@ lf() {
     fi
 }
 
-# mise
-eval "$(/home/maro/.local/bin/mise activate bash --shims)"
+eval "$(starship init bash)"
+command -v mise >/dev/null && eval "$(mise activate bash --shims)"
+command -v direnv >/dev/null && eval "$(direnv hook bash)"
 
-# zoxide — must be last
+# zoxide last: it wraps cd, and later inits win.
 eval "$(zoxide init bash)"
 alias cd='z'
-
-# coursier
-export PATH="$PATH:/home/maro/.local/share/coursier/bin"
-
-# sbt workaround until sbt/ipc is fixed
-# alias sbt='sbt -Dsbt.ipcsocket.tmpdir=/tmp'
-
-# direnv
-eval "$(direnv hook bash)"

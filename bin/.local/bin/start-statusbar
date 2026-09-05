@@ -1,4 +1,9 @@
 #!/bin/sh
+# Bounded: if audio never comes up, start the bar anyway rather than never.
 socket="$XDG_RUNTIME_DIR/pulse/native"
-until [ -S "$socket" ]; do sleep 0.2; done
+i=0
+while [ ! -S "$socket" ] && [ "$i" -lt 25 ]; do
+    sleep 0.2
+    i=$((i + 1))
+done
 exec i3status-rs ~/.config/i3status-rust/config.toml
