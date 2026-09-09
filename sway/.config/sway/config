@@ -111,8 +111,9 @@ exec /usr/libexec/xfce-polkit
 
 # Locking only; elogind owns suspend. Keep below IdleActionSec in logind.conf.
 exec swayidle -w \
-    timeout 300 'swaylock -f -c 000000' \
-    before-sleep 'swaylock -f -c 000000'
+    timeout 300 swaylock \
+    before-sleep swaylock \
+    after-resume 'swaymsg "output * power on"'
 
 bar {
     position top

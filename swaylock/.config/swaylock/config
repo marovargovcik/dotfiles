@@ -1,0 +1,8 @@
+# swaylock config (see swaylock(1)); each line is a long option without "--".
+daemonize
+color=000000
+
+# Show the indicator immediately, without waiting for a keypress, so a
+# locked screen after resume is distinguishable from a powered-off one.
+indicator-idle-visible
+show-keyboard-layout
