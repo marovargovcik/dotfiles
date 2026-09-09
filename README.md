@@ -430,7 +430,9 @@ lpoptions -p Brother_DCP-1610W_series | grep -o "printer-make-and-model='[^']*'"
 # → 'Brother DCP-1610W series, using Owl-Maintain/brlaser v6.2.8'
 ```
 
-`/etc/cups/*.conf` and `cups-browsed.conf` are untouched defaults. Web UI:
+`cupsd.conf`, `cups-files.conf` and `cups-browsed.conf` are untouched defaults.
+`printers.conf` and `subscriptions.conf` are written by cupsd once the queue
+exists, so they show as MODIFIED in the §13 drift check. Web UI:
 `http://localhost:631`.
 
 ## 11. Snapshots: snapper + cron + grub-btrfs + rollback
@@ -516,10 +518,12 @@ EOF
 ```
 
 (Shipped content of any file: `xbps-query --cat=/etc/<file> <pkg>`.)
-Expected modified set: `fstab group passwd subuid subgid` (install),
-`dhcpcd.conf`, `elogind/{logind,sleep}.conf`, `default/grub`,
+Expected modified set, 19 files: `fstab group passwd subuid subgid sudoers`
+(install), `dhcpcd.conf`, `elogind/{logind,sleep}.conf`, `default/grub`,
 `default/libc-locales`, `resolvconf.conf`, `pam.d/system-login`, `hostname`,
-`rc.conf`, `conf.d/snapper`. Anything else is undocumented drift.
+`rc.conf`, `conf.d/snapper`, `snapper-rollback.conf`, and
+`cups/{printers,subscriptions}.conf` — those last two are cupsd's own runtime
+state, not hand edits. Anything else is undocumented drift.
 
 ## 14. Maintenance
 
