@@ -214,8 +214,6 @@ private keys, keyrings, nvim plugin checkouts and Claude Code binaries physicall
 live inside `~/dotfiles/`, one `git add -A` away from being committed. `chmod 700
 ~/.ssh` after creating it.
 
-`system/` (this directory) is documentation only — never `stow system`.
-
 What the packages provide, so you know what *not* to write by hand:
 
 | Package | Provides |
