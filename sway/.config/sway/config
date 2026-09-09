@@ -16,6 +16,9 @@ input type:keyboard {
 
 input type:touchpad {
     natural_scroll enabled
+    # Press anywhere = left, two-finger press/tap = right, three = middle.
+    click_method clickfinger
+    tap enabled
 }
 
 bindsym $mod+Return exec $term
