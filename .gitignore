@@ -1,5 +1,19 @@
+# ssh: only the config, never keys, known_hosts, agent sockets
+ssh/*
+!ssh/.ssh/
 ssh/.ssh/*
 !ssh/.ssh/config
-bin/.local/share/
-bin/.local/state/
-bin/.local/bin/claude
+
+# bin: only the helper scripts listed below. Anything else that lands under
+# bin/.local (stow folding of ~/.local/share, ~/.local/state, the claude
+# symlink) stays out of the repo.
+bin/*
+!bin/.local/
+bin/.local/*
+!bin/.local/bin/
+bin/.local/bin/*
+!bin/.local/bin/bt-status
+!bin/.local/bin/power-menu
+!bin/.local/bin/start-statusbar
+!bin/.local/bin/wg-menu
+!bin/.local/bin/wg-status
