@@ -158,7 +158,7 @@ sudo xbps-install -S \
 | `nss-mdns` | makes `hosts: files mdns dns` in `/etc/nsswitch.conf` actually resolve `.local` |
 | `brother-brlaser` | the DCP-1610W is not driverless |
 | `cronie` | runs `/etc/cron.hourly/snapper`; without it there are no timeline snapshots |
-| `socklog-void` | the syslog daemon. Void installs none, so every service's `vlogger` writes into `/dev/log` with nothing listening and the output is discarded. `nanoklogd` additionally persists the kernel ring buffer, so `PM:` sleep lines outlive a reboot |
+| `socklog-void` | Void ships no syslog daemon, so anything a service writes to `/dev/log` is discarded. `nanoklogd` also persists the kernel ring buffer across reboots |
 | `grub-btrfs` `snapper-rollback` | boot a snapshot from the GRUB menu; roll `@` back to one |
 | `ffmpeg` | Firefox H.264 (Twitch etc.) |
 
@@ -182,9 +182,7 @@ agetty-tty1..6 avahi-daemon bluetoothd chronyd cronie cups-browsed cupsd dbus dh
 elogind grub-btrfs iwd nanoklogd polkitd snapperd socklog-unix udevd
 ```
 
-The two logging services go first so they capture everything that starts after
-them. `nanoklogd` replays the whole existing kernel ring buffer when it starts,
-so enabling it late still captures the current boot from `[0.000000]` onward.
+The logging services go first so they capture what starts after them.
 
 **polkit gotcha:** after installing polkit the system bus does not see the new
 `org.freedesktop.PolicyKit1` activation file until reloaded; without this
@@ -208,10 +206,8 @@ libseat uses elogind. `brightnessctl` ships udev rules granting `video`/`input`
 write access to backlights; they apply after a reboot. Re-login for group
 changes.
 
-`/var/log/socklog` is `drwxr-s--- root:socklog`, so the `socklog` group is the
-only way in short of sudo — and an existing session keeps its old group set, so
-`svlogtail` says "permission denied" until you re-login (`sg socklog -c '…'`
-for a one-off).
+`/var/log/socklog` is `drwxr-s--- root:socklog`; re-login before `svlogtail`
+works.
 
 ## 5. Dotfiles (stow)
 
@@ -258,20 +254,10 @@ swayidle runs swaylock **and reports the session idle to elogind**;
 `loginctl suspend-then-hibernate` from the power menu. Inhibit with
 `elogind-inhibit --what=idle:sleep --why=… cmd`.
 
-**`IdleAction=` alone does nothing on Wayland.** elogind derives idleness from
-TTY atime only for `Type=tty` sessions; for a graphical session (`Type=wayland`)
-it uses *solely* the `SetIdleHint` the session pushes over D-Bus. Sway never
-sends it, so without swayidle's `idlehint` verb the session reports
-`IdleHint=no` forever, `IdleActionSec` never elapses and the machine stays awake
-at the lock screen indefinitely. The sway package therefore carries:
-
-```
-exec swayidle -w \
-    timeout 300 swaylock \
-    idlehint 300 \
-    before-sleep swaylock \
-    after-resume 'swaymsg "output * power on"'
-```
+**`IdleAction=` needs `idlehint`.** For a `Type=wayland` session elogind uses
+only the `SetIdleHint` pushed over D-Bus; sway never sends it, so without
+swayidle's `idlehint` verb the idle timer never starts and the machine stays
+awake at the lock screen. The sway package carries it (§5).
 
 **`/etc/elogind/logind.conf`** (shipped file is all comments; append):
 
@@ -296,16 +282,9 @@ HibernateDelaySec=8h
 (`MemorySleepMode=` is not understood by elogind 252 — the kernel arg below
 selects `deep`.)
 
-**Do not `sv restart elogind` from inside Sway.** The restart tears down and
-recreates `seat0`, and the running compositor loses the seat it was bound to —
-the session dies and you land back on a TTY. Verified: `Received signal 15
-[TERM]` … `New seat seat0.` … `New session 1 of user maro.` … `Removed session
-1.` Apply changes with a reboot, or restart elogind from a TTY with Sway not
-running.
-
-Keep swayidle's 300 s lock at or below `IdleActionSec` so the screen locks
-before suspend; total time to suspend is `idlehint` + `IdleActionSec`
-(300 s + 10 min ≈ 15 min).
+**Do not `sv restart elogind` from inside Sway** — it recreates `seat0`, the
+running compositor loses its seat and you land back on a TTY. Apply with a
+reboot.
 
 `exec` in the sway config runs at startup only — `swaymsg reload` will **not**
 pick up an edited swayidle line. Re-login, or `pkill -x swayidle` and re-launch
@@ -347,76 +326,24 @@ sudo sh -c 'echo disk > /sys/power/state'   # raw hibernate → power on → ses
 loginctl suspend-then-hibernate             # the real thing
 ```
 
-### Observing what actually happened
+### Stages and timing
 
-`suspend-then-hibernate` is **two stages**. Lid close (or `IdleAction`) enters S3
-immediately; elogind then sets an RTC alarm for `HibernateDelaySec` later, and
-only if the machine is *still* suspended when it fires does it wake, write the
-image to swap and power off. So closing the lid and reopening it a few seconds
-later gives a 2–3 s resume straight to swaylock — that is stage one working, not
-a hibernation failure. A real hibernate resume goes through POST, the GRUB menu
-and a kernel boot first: 15–30 s, with the Lenovo splash visible.
+| At | What happens | Configured by |
+|---|---|---|
+| 5 min idle | swaylock locks the screen | swayidle `timeout 300` |
+| 5 min idle | session reports idle to elogind | swayidle `idlehint 300` |
+| + 10 min | suspend to RAM (S3) | `IdleActionSec=10min` |
+| + 8 h suspended | RTC wakes the machine, writes the image to swap, powers off | `HibernateDelaySec=8h` |
 
-To exercise stage two without waiting 8 h, use the raw kernel path above, or drop
-the delay temporarily:
+Lid close and the power key enter the suspend step directly, skipping the idle
+timers. Hibernation is only ever the second stage of a suspend, never an action
+on a running system — so a lid close and reopen resumes from RAM in 2–3 s, and
+only an untouched machine reaches hibernation. Resuming from it goes through
+GRUB and takes 15–30 s.
 
-```sh
-sudo sed -i 's/^HibernateDelaySec=8h/HibernateDelaySec=1min/' /etc/elogind/sleep.conf
-sudo reboot                 # NOT sv restart - see above. Then close the lid,
-                            # wait ~90 s, open it. Restore 8h afterwards.
-```
-
-The only record of either stage is the kernel ring buffer, and it is root-only
-(`kernel.dmesg_restrict=1`):
-
-```sh
-sudo dmesg | grep -iE 'PM:|hibernat|Image'
-# S3:        PM: suspend entry (deep) … PM: suspend exit
-# hibernate: PM: hibernation: hibernation entry … PM: Image saved (N pages)
-#            PM: Image loaded successfully        ← resumed from swap
-```
-
-Since §2–§4 installed socklog, that record is also on disk and readable
-without sudo. `nanoklogd` copies
-the ring buffer into `/var/log/socklog/kernel/`, so sleep history survives a
-reboot:
-
-```sh
-grep -iE 'PM: (suspend|hibernation)|sleep state' /var/log/socklog/kernel/current
-```
-
-A complete S3 cycle is four lines — `PM: suspend entry (deep)`, `ACPI: PM:
-Preparing to enter system sleep state S3`, `ACPI: PM: Waking up from system sleep
-state S3`, `PM: suspend exit`. A full `suspend-then-hibernate`, verified on this
-machine with `HibernateDelaySec=1min`, looks like this — note that stage two is
-entered by the RTC alarm waking the machine out of S3, not from the running
-system:
-
-```
-elogind: Lid closed.
-elogind: Suspending, then hibernating...
-[ 30.153331] PM: suspend entry (deep)          ← stage 1, S3
-[ 32.179617] PM: suspend exit                  ← RTC alarm fires after HibernateDelaySec
-[ 32.194361] PM: hibernation: hibernation entry ← stage 2, image to swap, power off
-[ 34.435645] PM: hibernation: hibernation exit  ← after GRUB + resume from swap
-```
-
-Beware the false positive: `PM: hibernation:
-Registered nosave memory` is printed at **every** boot (six times on this
-machine) and means nothing — match `hibernation entry` or `Image saved`, never
-bare `hibernation`.
-
-elogind's own decisions go through the **kernel** ring buffer at facility
-`auth`, so they land in `/var/log/socklog/secure/` — *not* in `daemon/`, despite
-its runit log service being `vlogger -t elogind -p daemon`:
-
-```sh
-grep -hE 'System idle|Suspending|Delay lock|New session' /var/log/socklog/secure/current
-```
-
-`System idle. Will suspend and later hibernate now.` is the line that proves
-`IdleAction` fired. It is exactly what was missing while the session never
-reported idle.
+Sleep history is on disk since §2–§4: `PM:` lines in
+`/var/log/socklog/kernel/`, elogind's own decisions (`Lid closed.`, `System
+idle. Will suspend and later hibernate now.`) in `/var/log/socklog/secure/`.
 
 ## 7. Networking: iwd (Wi-Fi) + dhcpcd (wired) + resolvconf
 
@@ -613,14 +540,8 @@ kernel misbehaves.
   the cmdline. Only `[s2idle]` → BIOS Sleep State is not "Linux".
 - Hibernate returns to a fresh boot → resume module missing from the initramfs
   (`sudo lsinitrd | grep -i resume`) or wrong `resume=` UUID.
-- Lid close, reopen, swaylock back in 2–3 s → that is S3, working as configured.
-  Hibernation is stage two and waits `HibernateDelaySec` (§6).
-- `svlogtail` never returns → it always ends in `tail -F`, with or without
-  arguments. For a one-shot read, grep `/var/log/socklog/<log>/current` directly.
-- `svlogtail`: permission denied → the `socklog` group was added after this
-  session started; re-login, or `sg socklog -c '…'`.
-- socklog timestamps look two hours off → svlogd's `-ttt` prefix is **UTC**; the
-  syslog message keeps its own local timestamp, so both appear on one line.
+- `svlogtail` never returns → it ends in `tail -F`; for a one-shot read grep
+  `/var/log/socklog/<log>/current` directly. Permission denied → re-login.
 - `loginctl` empty / lid does nothing → `dbus` or `elogind` not running, or sway
   was launched without `dbus-run-session`.
 - Sway died and you are back on a TTY right after editing elogind config → you
