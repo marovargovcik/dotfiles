@@ -6,6 +6,19 @@ icons = "material-nf"
 
 [[block]]
 block = "custom"
+command = "usb-status"
+json = true
+hide_when_empty = true
+interval = 30
+signal = 8
+format = " $text "
+
+[[block.click]]
+button = "left"
+cmd = "usb-menu"
+
+[[block]]
+block = "custom"
 command = "bt-status"
 interval = 3
 format = " $text "

@@ -1,0 +1,42 @@
+#!/bin/bash
+# Bar block for USB storage. Lists every USB filesystem by label, and goes Good
+# (green) once at least one of them is mounted. With nothing attached it emits
+# empty text and hide_when_empty drops the block — see the note further down.
+#
+# Plug/unplug refreshes it within a frame via /etc/udev/rules.d/99-usb-bar.rules,
+# which signals i3status-rs; the block's interval is only a safety net.
+
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+declare -A tran
+names=()
+state=Idle
+
+# lsblk -P quotes every value and hex-escapes anything special in it, so the
+# labels on a stranger's USB stick cannot smuggle anything through eval. NAME is
+# used rather than PATH, which would clobber $PATH here.
+while read -r line; do
+    NAME= TYPE= TRAN= FSTYPE= LABEL= MOUNTPOINT= PKNAME=
+    eval "$line"
+    # lsblk fills TRAN on the disk but leaves it empty on its partitions for USB
+    # (unlike nvme, where it propagates). The disk always precedes its children,
+    # so carry the transport down through PKNAME.
+    [ -n "$TRAN" ] || TRAN=${tran[$PKNAME]}
+    tran[$NAME]=$TRAN
+    [ "$TRAN" = usb ] || continue          # add mmc here to cover the SD slot
+    case "$TYPE" in part|disk) ;; *) continue ;; esac
+    case "$FSTYPE" in ""|swap|linux_raid_member|LVM2_member|crypto_LUKS) continue ;; esac
+    names+=("${LABEL:-$NAME}")
+    [ -n "$MOUNTPOINT" ] && state=Good
+done < <(lsblk -P -o NAME,TYPE,TRAN,FSTYPE,LABEL,MOUNTPOINT,PKNAME)
+
+# Always valid JSON, empty text when there is nothing to show: hide_when_empty
+# then drops the block. Printing *nothing* here does not hide it — the block
+# flips to "Invalid JSON" a few seconds in, once the empty parse surfaces.
+if [ ${#names[@]} -eq 0 ]; then
+    printf '{"text":""}\n'
+    exit 0
+fi
+
+text=$(printf '%s, ' "${names[@]}")
+printf '{"text":" %s","state":"%s"}\n' "$(esc "${text%, }")" "$state"

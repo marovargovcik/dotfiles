@@ -8,5 +8,7 @@ bin/**
 !bin/.local/bin/bt-status
 !bin/.local/bin/power-menu
 !bin/.local/bin/start-statusbar
+!bin/.local/bin/usb-menu
+!bin/.local/bin/usb-status
 !bin/.local/bin/wg-menu
 !bin/.local/bin/wg-status

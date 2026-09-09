@@ -1,0 +1,102 @@
+#!/bin/bash
+# fuzzel menu for USB storage. Every entry is verb-first, so what a selection
+# does is never a guess: mount / open / unlock / eject.
+#
+# udisks2 does the actual work over D-Bus: mounts land in /run/media/$USER/<label>
+# with sane per-filesystem options, and polkit lets an active seat0 session mount
+# and power off *removable* media with no password (§13 has no fragment for this).
+
+term=foot
+
+fail() { swaynag -t error -m "usb-menu: $1"; exit 1; }
+
+declare -A tran diskof labels
+items=(); acts=(); targets=()
+disks=(); disk_model=(); disk_size=()
+
+# See usb-status for why this parses lsblk -P with eval, and uses NAME not PATH.
+while read -r line; do
+    NAME= TYPE= TRAN= FSTYPE= LABEL= SIZE= MOUNTPOINT= VENDOR= MODEL= PKNAME=
+    eval "$line"
+
+    # lsblk fills TRAN on the disk but leaves it empty on its partitions for USB
+    # (unlike nvme, where it propagates). Parents always precede their children,
+    # so both the transport and the owning disk carry down through PKNAME.
+    [ -n "$TRAN" ] || TRAN=${tran[$PKNAME]}
+    tran[$NAME]=$TRAN
+    if [ "$TYPE" = disk ]; then
+        diskof[$NAME]=$NAME
+    else
+        diskof[$NAME]=${diskof[$PKNAME]:-$PKNAME}
+    fi
+
+    [ "$TRAN" = usb ] || continue          # add mmc here to cover the SD slot
+    dev=/dev/$NAME
+    name=${LABEL:-$NAME}
+
+    if [ "$TYPE" = disk ]; then
+        model=$(echo "$VENDOR $MODEL" | tr '_' ' ' | xargs)
+        disks+=("$NAME"); disk_model+=("${model:-$NAME}"); disk_size+=("$SIZE")
+    fi
+
+    case "$FSTYPE" in
+        ""|swap|linux_raid_member|LVM2_member)
+            continue ;;
+        crypto_LUKS)
+            items+=("unlock  $name   $SIZE   encrypted")
+            acts+=(unlock); targets+=("$dev") ;;
+        *)
+            if [ -n "$MOUNTPOINT" ]; then
+                items+=("open    $name   $MOUNTPOINT")
+                acts+=(open); targets+=("$MOUNTPOINT")
+            else
+                items+=("mount   $name   $SIZE   $FSTYPE")
+                acts+=(mount); targets+=("$dev")
+            fi ;;
+    esac
+
+    # What to call the drive when ejecting it: you recognise a stick by the label
+    # on it, not by the controller its vendor soldered on.
+    # Only a real label, never the kernel name: with nothing to recognise the
+    # stick by, the eject entry is better off naming the hardware.
+    if [ -n "$LABEL" ]; then
+        owner=${diskof[$NAME]}
+        labels[$owner]="${labels[$owner]:+${labels[$owner]}, }$LABEL"
+    fi
+done < <(lsblk -P -o NAME,TYPE,TRAN,FSTYPE,LABEL,SIZE,MOUNTPOINT,VENDOR,MODEL,PKNAME)
+
+# Eject entries come last, and only once every label on the drive is known.
+for k in "${!disks[@]}"; do
+    n=${disks[$k]}
+    if [ -n "${labels[$n]}" ]; then
+        items+=("eject   ${labels[$n]}   ${disk_size[$k]}   ${disk_model[$k]}")
+    else
+        items+=("eject   ${disk_model[$k]}   ${disk_size[$k]}")
+    fi
+    acts+=(eject); targets+=("/dev/$n")
+done
+
+[ ${#items[@]} -eq 0 ] && exit 0
+
+i=$(printf '%s\n' "${items[@]}" | fuzzel -d --index --no-exit-on-keyboard-focus-loss)
+[ -z "$i" ] && exit 0
+target=${targets[$i]}
+
+case "${acts[$i]}" in
+    mount)
+        out=$(udisksctl mount --no-user-interaction -b "$target" 2>&1) || fail "$out" ;;
+    open)
+        exec $term --working-directory="$target" ;;
+    unlock)
+        # udisksctl reads the passphrase from a tty, so it needs a terminal;
+        # the cleartext device shows up as a fresh "mount" entry afterwards.
+        $term udisksctl unlock -b "$target"
+        exec "$0" ;;
+    eject)
+        while read -r part _; do
+            out=$(udisksctl unmount --no-user-interaction -b "$part" 2>&1) || fail "$out"
+        done < <(lsblk -nlo PATH,MOUNTPOINT "$target" | awk 'NF > 1')
+        out=$(udisksctl power-off --no-user-interaction -b "$target" 2>&1) || fail "$out" ;;
+esac
+
+pkill -RTMIN+8 -x i3status-rs

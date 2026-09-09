@@ -141,6 +141,7 @@ sudo xbps-install -S \
   grim slurp wev clipman xdg-desktop-portal xdg-desktop-portal-wlr xdg-utils \
   pipewire wireplumber wiremix bluez bluetui libspa-bluetooth \
   iwd impala openresolv wireguard-tools \
+  udisks2 ntfs-3g exfatprogs \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void \
   git mise neovim starship bash-completion fzf zoxide eza bat delta lazygit \
@@ -157,6 +158,7 @@ sudo xbps-install -S \
 | `libspa-bluetooth` | without it BT headphones fail with `br-connection-unknown` |
 | `nss-mdns` | makes `hosts: files mdns dns` in `/etc/nsswitch.conf` actually resolve `.local` |
 | `brother-brlaser` | the DCP-1610W is not driverless |
+| `udisks2` `ntfs-3g` `exfatprogs` | removable media (§11). `ntfs-3g` supplies the `mount.ntfs` helper — the kernel registers NTFS as `ntfs3`, which is not the name udisks2 mounts it under |
 | `cronie` | runs `/etc/cron.hourly/snapper`; without it there are no timeline snapshots |
 | `socklog-void` | Void ships no syslog daemon, so anything a service writes to `/dev/log` is discarded. `nanoklogd` also persists the kernel ring buffer across reboots |
 | `grub-btrfs` `snapper-rollback` | boot a snapshot from the GRUB menu; roll `@` back to one |
@@ -174,6 +176,7 @@ done
 ```
 
 (`dhcpcd` was enabled in §2; `udevd` and `agetty-tty1..6` are already there.)
+`udisks2` is D-Bus activated and deliberately never appears here (§11).
 There is no `snapper-timeline`/`snapper-cleanup` runit service on Void —
 cron does that. Final expected set:
 
@@ -230,7 +233,7 @@ What the packages provide, so you know what *not* to write by hand:
 |---|---|
 | `bash` | `.bash_profile` launches `exec dbus-run-session ssh-agent sway` on tty1 (session bus + SSH agent for the whole session; 1Password/secret-service need the bus); `.bashrc` with starship, mise `--shims`, zoxide, aliases |
 | `sway` | keyboard `us,sk` (Alt+Shift toggles), `$mod`=Super, touchpad natural scroll, execs: `pipewire`, `gnome-keyring-daemon --components=secrets`, `wl-paste … clipman`, `/usr/libexec/xfce-polkit`, swayidle (`timeout 300` lock, `idlehint 300`, `before-sleep`, `after-resume`) |
-| `bin` | `~/.local/bin/{bt-status,wg-status,wg-menu,power-menu,start-statusbar}` — power menu uses `loginctl`, no sudo |
+| `bin` | `~/.local/bin/{bt-status,wg-status,wg-menu,power-menu,start-statusbar,usb-status,usb-menu}` — power menu uses `loginctl`, no sudo |
 | `swaylock` | lock screen appearance (`~/.config/swaylock/config`) |
 | `i3status-rust` `foot` `fuzzel` `lf` `nvim` `git` `mise` `pipewire` `ssh` | app configs. `ssh` gives `~/.ssh/config` only — never a key |
 
@@ -432,10 +435,100 @@ lpoptions -p Brother_DCP-1610W_series | grep -o "printer-make-and-model='[^']*'"
 
 `cupsd.conf`, `cups-files.conf` and `cups-browsed.conf` are untouched defaults.
 `printers.conf` and `subscriptions.conf` are written by cupsd once the queue
-exists, so they show as MODIFIED in the §13 drift check. Web UI:
+exists, so they show as MODIFIED in the §14 drift check. Web UI:
 `http://localhost:631`.
 
-## 11. Snapshots: snapper + cron + grub-btrfs + rollback
+## 11. Removable media: udisks2 + fuzzel
+
+Plug a stick in and a block appears in the bar; click it and fuzzel offers what
+can be done with it. Nothing sits in the background watching for devices and
+nothing auto-mounts — the bar block *is* the state, and it hides itself whenever
+no USB filesystem is attached.
+
+Two scripts in the `bin` stow package (§5), so `stow -R bin` after adding them:
+
+| | |
+|---|---|
+| `usb-status` | the block. Reads `lsblk` only. Lists every USB filesystem by label; `Idle` grey while none is mounted, `Good` green once one is |
+| `usb-menu` | the click handler. Every entry is verb-first, so a selection is never a guess |
+
+```
+mount   DATA   3.4G   ext4                            udisksctl mount
+open    ALBI   /run/media/maro/ALBI                   foot --working-directory=…
+unlock  sdc1   32G   encrypted                        udisksctl unlock, in a foot
+eject   ALBI, DATA   7.4G   TNDIY+ ZC3306 USB DISK    unmount all, then power-off
+```
+
+`open` starts a plain shell at the mountpoint rather than launching a file
+manager — `lf` is one thing you might want there, not the only one.
+
+```sh
+sudo xbps-install -S udisks2 ntfs-3g exfatprogs
+```
+
+`udisks2` is D-Bus activated on the system bus, so it has no runit service and
+inherits the polkit gotcha from §3 — reload the bus once after installing it or
+nothing can reach it:
+
+```sh
+sudo dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
+  --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ReloadConfig
+udisksctl status                       # lists the internal NVMe once it answers
+```
+
+**No sudoers fragment, no password.** udisks2's shipped polkit actions grant
+`filesystem-mount` and `power-off-drive` to any *active* session on a local seat
+as long as the drive is removable, and that is what `loginctl` already reports
+for the tty1 session (§14). Only a non-removable disk escalates to `auth_admin`,
+and then xfce-polkit prompts.
+
+**`/etc/udev/rules.d/99-usb-bar.rules`** — so plug and unplug repaint the bar at
+once rather than at the next poll:
+
+```sh
+sudo mkdir -p /etc/udev/rules.d
+sudo install -m 0644 -o root -g root /dev/stdin /etc/udev/rules.d/99-usb-bar.rules <<'END'
+ACTION=="add|remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN+="/usr/bin/pkill -RTMIN+8 -x i3status-rs"
+END
+sudo udevadm control --reload
+```
+
+`SIGRTMIN+8` is the `signal = 8` on the block in
+`~/.config/i3status-rust/config.toml`, and this rule is the only user of that
+number. The block's `interval = 30` is left in as the safety net for a `remove`
+event that arrives without `ID_BUS` in the udev db.
+
+The `eject` entry unmounts every filesystem on the drive and then powers it
+down, so it is safe to pull. It leads with the labels on the drive rather than
+the vendor string — you recognise a stick as `ALBI`, not as `TNDIY+ ZC3306 USB
+DISK` — and falls back to the vendor string only when there is no label to use.
+
+Mounts land in `/run/media/maro/<label>`, created and removed by udisks2 —
+nothing goes in `/etc/fstab`, and an unclean unplug leaves no stale mountpoint.
+`usb-menu` shells out to `udisksctl`; `usb-status` only reads `lsblk`, so the
+bar keeps working even when udisks2 is not.
+
+Both scripts key off `lsblk`'s `TRAN`, and it is only filled in on the **disk**
+for USB — `sda` reports `usb`, its `sda1` reports nothing, unlike nvme where it
+propagates to every partition. So they carry the transport down through `PKNAME`.
+Filter on `TRAN` alone and the filesystem never matches, because the row that has
+the transport has no filesystem and the row that has the filesystem has no
+transport.
+
+`usb-status` prints `{"text":""}` — not nothing — when no stick is attached.
+`hide_when_empty` drops a block whose *text* is empty, but a `json = true` block
+whose command printed **no output at all** does not parse, and the block flips to
+a red `Invalid JSON` a few seconds after start.
+
+Verify:
+
+```sh
+udevadm monitor --property --subsystem-match=block   # plug a stick: ID_BUS=usb
+lsblk -o NAME,TRAN,FSTYPE,LABEL,SIZE,MOUNTPOINT
+usb-status                                           # {"text":""} when idle
+```
+
+## 12. Snapshots: snapper + cron + grub-btrfs + rollback
 
 - `snapper -c root` covers `/` (`@`) only. Retention in
   `/etc/snapper/configs/root` is the create-config default (hourly 10 / daily 10
@@ -463,7 +556,7 @@ sudo snapper -c root list
 sudo snapper-rollback <N> && sudo reboot          # or boot the snapshot from GRUB first
 ```
 
-## 12. Secrets and WireGuard
+## 13. Secrets and WireGuard
 
 Nothing secret is in this repo; 1Password is the store. After signing in:
 
@@ -484,7 +577,7 @@ sudo visudo -c
 
 This is the only sudoers fragment. Power actions go through `loginctl`.
 
-## 13. Audit on a rebuilt machine
+## 14. Audit on a rebuilt machine
 
 ```sh
 cat /sys/power/mem_sleep                          # s2idle [deep]
@@ -496,6 +589,7 @@ grep -c . /var/log/socklog/kernel/current         # socklog reachable as maro (g
 groups                                            # … lpadmin
 head -1 /etc/resolv.conf                          # resolv.conf from …
 ps -eo comm | grep -E 'polkitd|gnome-keyring|xfce-polkit|wireplumber|1password'
+udisksctl status                                  # udisks2 answering on the bus
 lpstat -p; lpoptions -p Brother_DCP-1610W_series | grep -o 'brlaser[^ ]*'
 sudo -n wg show interfaces && echo sudoers-ok
 sudo visudo -c
@@ -525,7 +619,7 @@ Expected modified set, 19 files: `fstab group passwd subuid subgid sudoers`
 `cups/{printers,subscriptions}.conf` — those last two are cupsd's own runtime
 state, not hand edits. Anything else is undocumented drift.
 
-## 14. Maintenance
+## 15. Maintenance
 
 ```sh
 sudo snapper -c root create --description "pre-update"
@@ -563,6 +657,17 @@ kernel misbehaves.
   D-Bus `ReloadConfig` step (§3) was skipped after installing polkit.
 - 1Password 2FA asks every unlock → one of: PAM lines (§8), keyring daemon exec,
   `dbus-run-session`.
+- USB block never appears → `udisks2` not installed, or the D-Bus `ReloadConfig`
+  after installing it was skipped (§11). `usb-status` run by hand prints exactly
+  the JSON the bar parses.
+- USB block reads `Invalid JSON` → `usb-status` printed nothing at all. A
+  `json = true` custom block needs valid JSON even when it has nothing to say;
+  `hide_when_empty` only acts on an empty `text` field (§11).
+- Stick is in `lsblk` but the block stays hidden → `TRAN` is empty on USB
+  partitions; the transport has to come from the parent disk via `PKNAME` (§11).
+- Block appears only after up to 30 s → the udev rule is missing, or
+  `udevadm control --reload` was not run (§11).
+- NTFS stick fails with `unknown filesystem type 'ntfs'` → `ntfs-3g` missing (§11).
 - Keyboard backlight: `tpacpi::kbd_backlight`, levels 0–2 (`brightnessctl -d tpacpi::kbd_backlight set 1`).
 - `Shift+XF86MonBrightness*` cannot be bound in Sway; use `$mod+`.
 - atuin was removed: it fights starship's `PROMPT_COMMAND`.
@@ -581,7 +686,8 @@ kernel misbehaves.
 | `/etc/pam.d/system-login` | §8 |
 | `/opt/1Password` `/usr/bin/1password` `/usr/share/applications/1password.desktop` `/etc/1password/` | §9 |
 | `/etc/cups/ppd/Brother_DCP-1610W_series.ppd` | generated by `lpadmin` (§10) |
-| `/etc/snapper-rollback.conf` `/etc/default/grub-btrfs/config` | §11 |
-| `/etc/sudoers.d/wg-quick` | §12 |
+| `/etc/snapper-rollback.conf` `/etc/default/grub-btrfs/config` | §12 |
+| `/etc/udev/rules.d/99-usb-bar.rules` | §11 |
+| `/etc/sudoers.d/wg-quick` | §13 |
 | `/var/log/socklog/*` `/etc/sv/{socklog-unix,nanoklogd}` | `socklog-void`, untouched defaults (§2–3) |
 | everything else under `~` | stow packages in this repo |
