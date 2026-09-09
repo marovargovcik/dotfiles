@@ -112,9 +112,11 @@ exec gnome-keyring-daemon --start --daemonize --components=secrets
 exec wl-paste -t text --watch clipman store
 exec /usr/libexec/xfce-polkit
 
-# Locking only; elogind owns suspend. Keep below IdleActionSec in logind.conf.
+# Lock at 300s and report the session idle to elogind; elogind owns suspend.
+# Without `idlehint` a wayland session never reports idle and IdleAction never fires.
 exec swayidle -w \
     timeout 300 swaylock \
+    idlehint 300 \
     before-sleep swaylock \
     after-resume 'swaymsg "output * power on"'
 
