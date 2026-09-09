@@ -14,6 +14,10 @@ input type:keyboard {
     xkb_variant ",qwerty"
 }
 
+input type:touchpad {
+    natural_scroll enabled
+}
+
 bindsym $mod+Return exec $term
 bindsym $mod+d exec $menu
 bindsym $mod+Shift+q kill
@@ -97,14 +101,13 @@ bindsym --locked XF86AudioRaiseVolume exec wpctl set-volume -l 1.0 @DEFAULT_AUDI
 bindsym --locked XF86AudioMicMute exec wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
 bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 bindsym --locked XF86MonBrightnessUp exec brightnessctl set 5%+
-bindsym --locked $mod+XF86MonBrightnessDown exec brightnessctl -d tpacpi::kbd_backlight set 1-
-bindsym --locked $mod+XF86MonBrightnessUp exec brightnessctl -d tpacpi::kbd_backlight set +1
 bindsym Print exec grim
 bindsym $mod+c exec clipman pick --tool=CUSTOM --tool-args="fuzzel -d"
 
 exec pipewire
-exec gnome-keyring-daemon --start --daemonize --components=secrets,pkcs11
+exec gnome-keyring-daemon --start --daemonize --components=secrets
 exec wl-paste -t text --watch clipman store
+exec /usr/libexec/xfce-polkit
 
 # Locking only; elogind owns suspend. Keep below IdleActionSec in logind.conf.
 exec swayidle -w \

@@ -16,7 +16,8 @@ cmd = "foot bluetui"
 
 [[block]]
 block = "net"
-format = " $icon $ssid "
+format = " $icon {$ssid|$device} "
+inactive_format = " $icon -- "
 interval = 5
 
 [[block.click]]
@@ -42,7 +43,7 @@ interval = 30
 
 [[block]]
 block = "custom"
-command = "scr=$(cat /sys/class/backlight/intel_backlight/brightness); max=$(cat /sys/class/backlight/intel_backlight/max_brightness); kbd=$(cat /sys/class/leds/tpacpi::kbd_backlight/brightness); printf '󰃟 %d%% 󰌌 %d/2' $((scr*100/max)) $kbd"
+command = "scr=$(cat /sys/class/backlight/intel_backlight/brightness); max=$(cat /sys/class/backlight/intel_backlight/max_brightness); kbd=$(cat /sys/class/leds/tpacpi::kbd_backlight/brightness); case $kbd in 0) kbdl=off;; 1) kbdl=low;; 2) kbdl=high;; esac; printf '󰃟 %d%%  󰌌 %s' $((scr*100/max)) $kbdl"
 interval = 1
 format = " $text "
 
@@ -63,6 +64,16 @@ max_vol = 100
 [[block.click]]
 button = "left"
 cmd = "foot wiremix"
+
+[[block]]
+block = "custom"
+command = "echo '󰌾'"
+interval = "once"
+format = " $text "
+
+[[block.click]]
+button = "left"
+cmd = "1password --toggle"
 
 [[block]]
 block = "time"

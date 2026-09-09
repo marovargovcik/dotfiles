@@ -1,0 +1,5 @@
+ssh/.ssh/*
+!ssh/.ssh/config
+bin/.local/share/
+bin/.local/state/
+bin/.local/bin/claude
