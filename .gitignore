@@ -1,17 +1,10 @@
-# ssh: only the config, never keys, known_hosts, agent sockets
-ssh/*
+ssh/**
 !ssh/.ssh/
-ssh/.ssh/*
 !ssh/.ssh/config
 
-# bin: only the helper scripts listed below. Anything else that lands under
-# bin/.local (stow folding of ~/.local/share, ~/.local/state, the claude
-# symlink) stays out of the repo.
-bin/*
+bin/**
 !bin/.local/
-bin/.local/*
 !bin/.local/bin/
-bin/.local/bin/*
 !bin/.local/bin/bt-status
 !bin/.local/bin/power-menu
 !bin/.local/bin/start-statusbar
