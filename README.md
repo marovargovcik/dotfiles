@@ -10,7 +10,7 @@ be typed as-is unless it says "machine-specific".
 x86_64 glibc, runit, dracut, GRUB/UEFI, btrfs + snapper, Sway, elogind, iwd,
 PipeWire. Hostname `t14`, user `maro`, locale `en_US.UTF-8`, TZ `Europe/Bratislava`.
 
-State reflected here was verified against the running system on 2026-09-09
+State reflected here was verified against the running system on 2026-09-10
 (`/etc` diffed against the shipped package files, `/var/service`, `xbps-query -m`).
 
 ---
@@ -143,7 +143,7 @@ sudo xbps-install -S \
   iwd impala openresolv wireguard-tools \
   udisks2 ntfs-3g exfatprogs \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
-  snapper-rollback grub-btrfs cronie chrony socklog-void \
+  snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
   git mise neovim starship bash-completion fzf zoxide eza bat delta lazygit \
   lf chafa poppler-utils firefox ffmpeg curl lsof stow unzip nano
 ```
@@ -181,6 +181,8 @@ cron does that. Final expected set:
 agetty-tty1..6 avahi-daemon bluetoothd chronyd cronie cups-browsed cupsd dbus dhcpcd
 elogind grub-btrfs iwd nanoklogd polkitd snapperd socklog-unix udevd
 ```
+
+plus `iptables ip6tables tlp`, enabled in §14–§15 once their files exist.
 
 The logging services go first so they capture what starts after them.
 
@@ -409,7 +411,7 @@ lpoptions -p Brother_DCP-1610W_series | grep -o "printer-make-and-model='[^']*'"
 
 `cupsd.conf`, `cups-files.conf` and `cups-browsed.conf` are untouched defaults.
 `printers.conf` and `subscriptions.conf` are written by cupsd once the queue
-exists, so they show as MODIFIED in the §14 drift check. Web UI:
+exists, so they show as MODIFIED in the §17 drift check. Web UI:
 `http://localhost:631`.
 
 ## 11. Removable media: udisks2 + fuzzel
@@ -459,7 +461,7 @@ udevadm monitor --property --subsystem-match=block   # plug a stick: ID_BUS=usb
 usb-status                                           # {"text":""} when idle
 ```
 
-## 12. Snapshots: snapper + cron + grub-btrfs + rollback
+## 12. Btrfs: snapshots, rollback, scrub
 
 - `snapper -c root` covers `/` (`@`) only. Retention in
   `/etc/snapper/configs/root` is the create-config default (hourly 10 / daily 10
@@ -487,6 +489,17 @@ sudo snapper -c root list
 sudo snapper-rollback <N> && sudo reboot          # or boot the snapshot from GRUB first
 ```
 
+**`/etc/cron.monthly/btrfs-scrub`** — verifies every checksum on the disk once
+a month, so silent corruption is caught while a snapshot still has the file:
+
+```sh
+sudo install -m 0755 -o root -g root /dev/stdin /etc/cron.monthly/btrfs-scrub <<'END'
+#!/bin/sh
+btrfs scrub start -B -c 3 / 2>&1 | logger -t btrfs-scrub
+END
+sudo /etc/cron.monthly/btrfs-scrub && grep btrfs-scrub /var/log/socklog/cron/current | tail -3   # "no errors found"
+```
+
 ## 13. Secrets and WireGuard
 
 Nothing secret is in this repo; 1Password is the store. After signing in:
@@ -508,7 +521,71 @@ sudo visudo -c
 
 This is the only sudoers fragment. Power actions go through `loginctl`.
 
-## 14. Audit on a rebuilt machine
+## 14. Firewall: iptables
+
+`iptables` comes with `base-system`. Inbound default-drop; loopback, replies,
+ICMP and mDNS (`5353`, printer discovery) allowed. dhcpcd and WireGuard are
+unaffected. Write the rules **before** enabling the services — the service
+loops on a missing file.
+
+```sh
+sudo install -m 0644 -o root -g root /dev/stdin /etc/iptables/iptables.rules <<'END'
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -i lo -j ACCEPT
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -p icmp -j ACCEPT
+-A INPUT -p udp --dport 5353 -j ACCEPT
+-A INPUT -p tcp -j REJECT --reject-with tcp-reset
+-A INPUT -p udp -j REJECT --reject-with icmp-port-unreachable
+-A INPUT -j REJECT --reject-with icmp-proto-unreachable
+COMMIT
+END
+sudo install -m 0644 -o root -g root /dev/stdin /etc/iptables/ip6tables.rules <<'END'
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -i lo -j ACCEPT
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -p ipv6-icmp -j ACCEPT
+-A INPUT -p udp --dport 5353 -j ACCEPT
+-A INPUT -p tcp -j REJECT --reject-with tcp-reset
+-A INPUT -p udp -j REJECT --reject-with icmp6-port-unreachable
+-A INPUT -j REJECT --reject-with icmp6-adm-prohibited
+COMMIT
+END
+sudo ln -s /etc/sv/iptables /etc/sv/ip6tables /var/service/
+sudo iptables -L INPUT -n --line-numbers      # 7 rules, policy DROP
+```
+
+## 15. Power: tlp
+
+Installed in §2. Defaults untouched; overrides go in `/etc/tlp.d/`. Coexists
+with elogind (§6).
+
+```sh
+sudo ln -s /etc/sv/tlp /var/service/
+sudo tlp-stat -s                              # TLP status: enabled; Mode: battery when unplugged
+```
+
+## 16. Firmware updates: fwupd
+
+Installed in §2. D-Bus activated, so it needs the same bus reload as polkit
+(§3):
+
+```sh
+sudo dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
+  --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ReloadConfig
+fwupdmgr refresh --force && fwupdmgr get-updates
+```
+
+`fwupdmgr update` when one is listed; it reboots into the flash. BIOS at
+setup: `N34ET71W (1.71)`.
+
+## 17. Audit on a rebuilt machine
 
 ```sh
 cat /sys/power/mem_sleep                          # s2idle [deep]
@@ -524,6 +601,10 @@ udisksctl status                                  # udisks2 answering on the bus
 lpstat -p; lpoptions -p Brother_DCP-1610W_series | grep -o 'brlaser[^ ]*'
 sudo -n wg show interfaces && echo sudoers-ok
 sudo visudo -c
+sudo iptables -L INPUT -n | head -1               # Chain INPUT (policy DROP)
+sudo tlp-stat -s | grep -E 'TLP status|Mode'
+fwupdmgr get-devices >/dev/null && echo fwupd-ok
+ls /etc/cron.monthly/btrfs-scrub
 ```
 
 Config drift check. `sudo xbps-pkgdb -a` (silent when clean) only checks
@@ -550,7 +631,7 @@ Expected modified set, 19 files: `fstab group passwd subuid subgid sudoers`
 `cups/{printers,subscriptions}.conf` — those last two are cupsd's own runtime
 state, not hand edits. Anything else is undocumented drift.
 
-## 15. Maintenance
+## 18. Maintenance
 
 ```sh
 sudo snapper -c root create --description "pre-update"
@@ -558,6 +639,7 @@ sudo xbps-install -Su
 sudo xbps-remove -o          # orphans
 sudo vkpurge list            # stale kernel files; vkpurge rm all
 sudo grub-mkconfig -o /boot/grub/grub.cfg   # after kernel changes
+fwupdmgr refresh && fwupdmgr get-updates    # firmware; fwupdmgr update to apply
 ```
 
 Snapshot before kernel upgrades; boot the previous snapshot from GRUB if a new
@@ -599,6 +681,8 @@ kernel misbehaves.
 - Keyboard backlight: `tpacpi::kbd_backlight`, levels 0–2 (`brightnessctl -d tpacpi::kbd_backlight set 1`).
 - `Shift+XF86MonBrightness*` cannot be bound in Sway; use `$mod+`.
 - atuin was removed: it fights starship's `PROMPT_COMMAND`.
+- `sv status iptables` flapping → `/etc/iptables/iptables.rules` missing (§14).
+- Printer vanished after the firewall → the `udp --dport 5353` line is missing (§14).
 
 ## Key files
 
@@ -617,5 +701,8 @@ kernel misbehaves.
 | `/etc/snapper-rollback.conf` `/etc/default/grub-btrfs/config` | §12 |
 | `/etc/udev/rules.d/99-usb-bar.rules` | §11 |
 | `/etc/sudoers.d/wg-quick` | §13 |
+| `/etc/cron.monthly/btrfs-scrub` | §12 |
+| `/etc/iptables/{iptables,ip6tables}.rules` | §14 |
+| `/etc/tlp.conf` (shipped) `/etc/tlp.d/` | §15 |
 | `/var/log/socklog/*` `/etc/sv/{socklog-unix,nanoklogd}` | `socklog-void`, untouched defaults (§2–3) |
 | everything else under `~` | stow packages in this repo |
