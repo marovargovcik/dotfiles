@@ -148,21 +148,18 @@ sudo xbps-install -S \
   lf chafa poppler-utils firefox ffmpeg curl lsof stow unzip nano
 ```
 
-| Group | Why |
+Packages that look optional and are not:
+
+| Package | Needed for |
 |---|---|
-| `linux7.2` | the kernel actually booted; `base-system`'s `linux` meta stays on 6.18 as fallback. GRUB picks the newest. |
-| `elogind` | seat + session + logind D-Bus API; owns lid/power/idle/sleep. No seatd, no turnstile, no acpid. |
-| `polkit` `xfce-polkit` | 1Password's system-auth unlock goes through a polkit action (`after-install.sh` installs the policy); xfce-polkit is the prompt UI |
-| `gnome-keyring` `libsecret` | secret-service on the session bus so 1Password's 2FA token survives a lock |
-| `mesa-dri` `intel-video-accel` | Iris Xe + VA-API |
-| `libspa-bluetooth` | without it BT headphones fail with `br-connection-unknown` |
-| `nss-mdns` | makes `hosts: files mdns dns` in `/etc/nsswitch.conf` actually resolve `.local` |
-| `brother-brlaser` | the DCP-1610W is not driverless |
-| `udisks2` `ntfs-3g` `exfatprogs` | removable media (§11). `ntfs-3g` supplies the `mount.ntfs` helper — the kernel registers NTFS as `ntfs3`, which is not the name udisks2 mounts it under |
-| `cronie` | runs `/etc/cron.hourly/snapper`; without it there are no timeline snapshots |
-| `socklog-void` | Void ships no syslog daemon, so anything a service writes to `/dev/log` is discarded. `nanoklogd` also persists the kernel ring buffer across reboots |
-| `grub-btrfs` `snapper-rollback` | boot a snapshot from the GRUB menu; roll `@` back to one |
-| `ffmpeg` | Firefox H.264 (Twitch etc.) |
+| `linux7.2` | the kernel actually booted; `base-system`'s `linux` meta stays on 6.18 as fallback |
+| `elogind` | seat, session, lid/power/idle/sleep. No seatd, no turnstile, no acpid |
+| `gnome-keyring` `libsecret` | 1Password's 2FA token surviving a lock |
+| `libspa-bluetooth` | BT headphones (else `br-connection-unknown`) |
+| `nss-mdns` | `.local` names resolving (printer) |
+| `ntfs-3g` | udisks2 mounting NTFS sticks |
+| `cronie` | snapper timeline snapshots (`/etc/cron.hourly/snapper`) |
+| `socklog-void` | any syslog at all; Void ships no logger |
 
 Manual, outside xbps (done later in §9 and §5): 1Password tarball, Claude Code.
 
@@ -221,11 +218,9 @@ mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config
 cd ~/dotfiles && stow bash bin foot fuzzel git i3status-rust lf mise nvim pipewire ssh sway swaylock
 ```
 
-**Create the real directories first.** Stow "folds": if `~/.ssh` or `~/.local`
-does not exist it symlinks the whole directory into the repo, and from then on
-private keys, keyrings, nvim plugin checkouts and Claude Code binaries physically
-live inside `~/dotfiles/`, one `git add -A` away from being committed. `chmod 700
-~/.ssh` after creating it.
+**Create the real directories first** — stow symlinks any missing directory
+whole, and your private keys and binaries would then live inside the repo.
+`chmod 700 ~/.ssh` after creating it.
 
 What the packages provide, so you know what *not* to write by hand:
 
@@ -233,7 +228,7 @@ What the packages provide, so you know what *not* to write by hand:
 |---|---|
 | `bash` | `.bash_profile` launches `exec dbus-run-session ssh-agent sway` on tty1 (session bus + SSH agent for the whole session; 1Password/secret-service need the bus); `.bashrc` with starship, mise `--shims`, zoxide, aliases |
 | `sway` | keyboard `us,sk` (Alt+Shift toggles), `$mod`=Super, touchpad natural scroll, execs: `pipewire`, `gnome-keyring-daemon --components=secrets`, `wl-paste … clipman`, `/usr/libexec/xfce-polkit`, swayidle (`timeout 300` lock, `idlehint 300`, `before-sleep`, `after-resume`) |
-| `bin` | `~/.local/bin/{bt-status,wg-status,wg-menu,power-menu,start-statusbar,usb-status,usb-menu}` — power menu uses `loginctl`, no sudo |
+| `bin` | `~/.local/bin/{bt-status,wg-status,wg-menu,power-menu,start-statusbar,usb-status,usb-menu}` — power menu uses `loginctl`, no sudo; `bt-status`/`wg-status` are event-driven (`persistent = true` in the bar config), not polled |
 | `swaylock` | lock screen appearance (`~/.config/swaylock/config`) |
 | `i3status-rust` `foot` `fuzzel` `lf` `nvim` `git` `mise` `pipewire` `ssh` | app configs. `ssh` gives `~/.ssh/config` only — never a key |
 
@@ -244,23 +239,16 @@ mise install                                    # node 26, temurin 26, usage —
 curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
 ```
 
-`pipewire` provides `~/.config/pipewire/pipewire.conf.d/`: `10-session-services.conf`
-(a `context.exec` block so the `pipewire` daemon spawns `wireplumber` and
-`pipewire-pulse` itself; nothing else starts them) and `20-quantum.conf`
-(quantum 2048 / min 1024, the Bluetooth crackle fix). Only `*.conf` is loaded;
-a typo in the extension silently disables the file.
+`pipewire` also carries `~/.config/pipewire/pipewire.conf.d/` (pipewire spawns
+wireplumber and pipewire-pulse itself; quantum 2048 against BT crackle). Only
+`*.conf` files there are loaded.
 
 ## 6. Sleep and hibernate
 
-Model: elogind decides *when* (lid, power key, idle, S3→hibernate timer);
-swayidle runs swaylock **and reports the session idle to elogind**;
-`loginctl suspend-then-hibernate` from the power menu. Inhibit with
-`elogind-inhibit --what=idle:sleep --why=… cmd`.
-
-**`IdleAction=` needs `idlehint`.** For a `Type=wayland` session elogind uses
-only the `SetIdleHint` pushed over D-Bus; sway never sends it, so without
-swayidle's `idlehint` verb the idle timer never starts and the machine stays
-awake at the lock screen. The sway package carries it (§5).
+elogind decides when (lid, power key, idle); swayidle locks the screen and
+reports idle to elogind (its `idlehint` verb — the sway package carries it,
+§5, and without it the machine never suspends); the power menu runs `loginctl
+suspend-then-hibernate`. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
 
 **`/etc/elogind/logind.conf`** (shipped file is all comments; append):
 
@@ -282,16 +270,9 @@ SuspendState=mem
 HibernateDelaySec=8h
 ```
 
-(`MemorySleepMode=` is not understood by elogind 252 — the kernel arg below
-selects `deep`.)
-
-**Do not `sv restart elogind` from inside Sway** — it recreates `seat0`, the
-running compositor loses its seat and you land back on a TTY. Apply with a
-reboot.
-
-`exec` in the sway config runs at startup only — `swaymsg reload` will **not**
-pick up an edited swayidle line. Re-login, or `pkill -x swayidle` and re-launch
-it with `swaymsg exec`.
+Apply with a reboot — `sv restart elogind` inside Sway recreates `seat0` and
+drops you to a TTY. (`swaymsg reload` does not re-run `exec` lines either;
+re-login after editing the swayidle line.)
 
 **Kernel cmdline** — machine-specific UUID:
 
@@ -305,8 +286,7 @@ sudo blkid -s UUID -o value /dev/nvme0n1p2
 GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 mem_sleep_default=deep resume=UUID=<swap-uuid>"
 ```
 
-**`/etc/dracut.conf.d/resume.conf`** — without it `resume=` is ignored and
-hibernate becomes a slow poweroff:
+**`/etc/dracut.conf.d/resume.conf`** (without it `resume=` is ignored):
 
 ```
 add_dracutmodules+=" resume "
@@ -338,15 +318,9 @@ loginctl suspend-then-hibernate             # the real thing
 | + 10 min | suspend to RAM (S3) | `IdleActionSec=10min` |
 | + 8 h suspended | RTC wakes the machine, writes the image to swap, powers off | `HibernateDelaySec=8h` |
 
-Lid close and the power key enter the suspend step directly, skipping the idle
-timers. Hibernation is only ever the second stage of a suspend, never an action
-on a running system — so a lid close and reopen resumes from RAM in 2–3 s, and
-only an untouched machine reaches hibernation. Resuming from it goes through
-GRUB and takes 15–30 s.
-
-Sleep history is on disk since §2–§4: `PM:` lines in
-`/var/log/socklog/kernel/`, elogind's own decisions (`Lid closed.`, `System
-idle. Will suspend and later hibernate now.`) in `/var/log/socklog/secure/`.
+Lid close and the power key go straight to suspend. Hibernation only ever
+follows a suspend that lasted 8 h. Resume from RAM takes 2–3 s, from disk
+15–30 s via GRUB. History: `/var/log/socklog/{kernel,secure}/`.
 
 ## 7. Networking: iwd (Wi-Fi) + dhcpcd (wired) + resolvconf
 
@@ -376,13 +350,13 @@ name_servers="1.1.1.1 1.0.0.1"
 ```
 
 ```sh
-sudo sv restart iwd && sudo dhcpcd -n enp0s31f6 && sudo resolvconf -u
+sudo sv restart iwd
+sudo dhcpcd -n enp0s31f6     # rebind, so dhcpcd re-runs its hooks and stops writing resolv.conf itself
+sudo resolvconf -u
 head -1 /etc/resolv.conf     # want "# resolv.conf from …", NOT "# Generated by dhcpcd"
 ```
 
-The `dhcpcd -n` rebind matters: if dhcpcd bound the wired port before
-`openresolv` was installed it wrote `/etc/resolv.conf` itself and keeps doing so
-until it re-runs its hooks. Connect Wi-Fi with `iwctl` or `impala` (bar click).
+Connect Wi-Fi with `iwctl` or `impala` (bar click).
 
 ## 8. PAM: gnome-keyring auto-unlock
 
@@ -440,35 +414,18 @@ exists, so they show as MODIFIED in the §14 drift check. Web UI:
 
 ## 11. Removable media: udisks2 + fuzzel
 
-Plug a stick in and a block appears in the bar; click it and fuzzel offers what
-can be done with it. Nothing sits in the background watching for devices and
-nothing auto-mounts — the bar block *is* the state, and it hides itself whenever
-no USB filesystem is attached.
-
-Two scripts in the `bin` stow package (§5), so `stow -R bin` after adding them:
-
-| | |
-|---|---|
-| `usb-status` | the block. Reads `lsblk` only. Lists every USB filesystem by label; `Idle` grey while none is mounted, `Good` green once one is |
-| `usb-menu` | the click handler. Every entry is verb-first, so a selection is never a guess |
-
-```
-mount   DATA   3.4G   ext4                            udisksctl mount
-open    ALBI   /run/media/maro/ALBI                   foot --working-directory=…
-unlock  sdc1   32G   encrypted                        udisksctl unlock, in a foot
-eject   ALBI, DATA   7.4G   TNDIY+ ZC3306 USB DISK    unmount all, then power-off
-```
-
-`open` starts a plain shell at the mountpoint rather than launching a file
-manager — `lf` is one thing you might want there, not the only one.
+Plug a stick in, a block appears in the bar; click it and fuzzel offers
+mount / open / unlock / eject. Nothing auto-mounts; mounts land in
+`/run/media/maro/<label>`. Two scripts from the `bin` stow package (§5):
+`usb-status` (the block, reads `lsblk`) and `usb-menu` (the click handler,
+drives `udisksctl`).
 
 ```sh
 sudo xbps-install -S udisks2 ntfs-3g exfatprogs
 ```
 
-`udisks2` is D-Bus activated on the system bus, so it has no runit service and
-inherits the polkit gotcha from §3 — reload the bus once after installing it or
-nothing can reach it:
+`udisks2` is D-Bus activated (no runit service). Reload the bus once after
+installing it, as for polkit in §3:
 
 ```sh
 sudo dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
@@ -476,14 +433,10 @@ sudo dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
 udisksctl status                       # lists the internal NVMe once it answers
 ```
 
-**No sudoers fragment, no password.** udisks2's shipped polkit actions grant
-`filesystem-mount` and `power-off-drive` to any *active* session on a local seat
-as long as the drive is removable, and that is what `loginctl` already reports
-for the tty1 session (§14). Only a non-removable disk escalates to `auth_admin`,
-and then xfce-polkit prompts.
+No sudoers fragment: udisks2's own polkit rules let the active local session
+mount and eject removable drives.
 
-**`/etc/udev/rules.d/99-usb-bar.rules`** — so plug and unplug repaint the bar at
-once rather than at the next poll:
+**`/etc/udev/rules.d/99-usb-bar.rules`** — repaints the bar on plug/unplug:
 
 ```sh
 sudo mkdir -p /etc/udev/rules.d
@@ -493,38 +446,16 @@ END
 sudo udevadm control --reload
 ```
 
-`SIGRTMIN+8` is the `signal = 8` on the block in
-`~/.config/i3status-rust/config.toml`, and this rule is the only user of that
-number. The block's `interval = 30` is left in as the safety net for a `remove`
-event that arrives without `ID_BUS` in the udev db.
-
-The `eject` entry unmounts every filesystem on the drive and then powers it
-down, so it is safe to pull. It leads with the labels on the drive rather than
-the vendor string — you recognise a stick as `ALBI`, not as `TNDIY+ ZC3306 USB
-DISK` — and falls back to the vendor string only when there is no label to use.
-
-Mounts land in `/run/media/maro/<label>`, created and removed by udisks2 —
-nothing goes in `/etc/fstab`, and an unclean unplug leaves no stale mountpoint.
-`usb-menu` shells out to `udisksctl`; `usb-status` only reads `lsblk`, so the
-bar keeps working even when udisks2 is not.
-
-Both scripts key off `lsblk`'s `TRAN`, and it is only filled in on the **disk**
-for USB — `sda` reports `usb`, its `sda1` reports nothing, unlike nvme where it
-propagates to every partition. So they carry the transport down through `PKNAME`.
-Filter on `TRAN` alone and the filesystem never matches, because the row that has
-the transport has no filesystem and the row that has the filesystem has no
-transport.
-
-`usb-status` prints `{"text":""}` — not nothing — when no stick is attached.
-`hide_when_empty` drops a block whose *text* is empty, but a `json = true` block
-whose command printed **no output at all** does not parse, and the block flips to
-a red `Invalid JSON` a few seconds after start.
+Bar signal numbers in use: **8** USB (this rule) — pick an unused one for any
+new rule and add it here. Nothing else in the bar polls faster than once a
+minute: `bt-status`/`wg-status` wait on D-Bus/netlink, the screen backlight is
+the native block. No keyboard-backlight block on purpose — Fn+Space raises no
+event on this machine, so showing it would mean polling.
 
 Verify:
 
 ```sh
 udevadm monitor --property --subsystem-match=block   # plug a stick: ID_BUS=usb
-lsblk -o NAME,TRAN,FSTYPE,LABEL,SIZE,MOUNTPOINT
 usb-status                                           # {"text":""} when idle
 ```
 
@@ -565,8 +496,8 @@ Nothing secret is in this repo; 1Password is the store. After signing in:
 - WireGuard → `~/.config/wireguard/*.conf` (0600). `wg-quick` takes full paths,
   so `/etc/wireguard` is unused.
 
-Sudo fragment so the bar block and `wg-menu` work without a prompt —
-**`/etc/sudoers.d/wg-quick`**:
+Sudo fragment so `wg-menu` works without a prompt (the bar block itself needs
+no root — it reads the link type) — **`/etc/sudoers.d/wg-quick`**:
 
 ```sh
 sudo install -m 0440 -o root -g root /dev/stdin /etc/sudoers.d/wg-quick <<'END'
@@ -646,9 +577,6 @@ kernel misbehaves.
   ran `sv restart elogind` inside the session; it recreates `seat0` (§6). Reboot
   to apply instead.
 - Screen locks but never suspends → missing `idlehint` in the swayidle line (§6).
-  Confirm with `busctl --system get-property org.freedesktop.login1
-  /org/freedesktop/login1 org.freedesktop.login1.Manager IdleHint` — it must flip
-  to `true` once idle. Lid/power key still work, which is what masks this.
 - Wired link up but no DHCP → `dhcpcd` service not enabled (§2).
 - `/etc/resolv.conf` says "Generated by dhcpcd" → run `sudo dhcpcd -n enp0s31f6`.
 - BT audio `br-connection-unknown` → `libspa-bluetooth`; then `pkill wireplumber; pkill pipewire` and let sway re-exec.
@@ -665,7 +593,7 @@ kernel misbehaves.
   `hide_when_empty` only acts on an empty `text` field (§11).
 - Stick is in `lsblk` but the block stays hidden → `TRAN` is empty on USB
   partitions; the transport has to come from the parent disk via `PKNAME` (§11).
-- Block appears only after up to 30 s → the udev rule is missing, or
+- USB block appears only after up to 5 min → the udev rule is missing, or
   `udevadm control --reload` was not run (§11).
 - NTFS stick fails with `unknown filesystem type 'ntfs'` → `ntfs-3g` missing (§11).
 - Keyboard backlight: `tpacpi::kbd_backlight`, levels 0–2 (`brightnessctl -d tpacpi::kbd_backlight set 1`).

@@ -1,9 +1,21 @@
 #!/bin/bash
+# Bar block for Bluetooth, run with persistent = true: prints the state once,
+# then sleeps on the system bus and reprints whenever BlueZ reports a device's
+# Connected property changing. Nothing runs between events. Should gdbus exit
+# (bluetoothd restarted, bus gone) the script exits with it and i3status-rs
+# starts it again a few seconds later.
 
-connected=$(bluetoothctl devices Connected 2>/dev/null | head -1)
-if [ -z "$connected" ]; then
-    echo "󰂯"
-else
-    name=$(echo "$connected" | cut -d' ' -f3-)
-    echo "󰂱 $name"
-fi
+status() {
+    local connected
+    connected=$(bluetoothctl devices Connected 2>/dev/null | head -1)
+    if [ -z "$connected" ]; then
+        echo "󰂯"
+    else
+        echo "󰂱 ${connected#Device * }"     # "Device <mac> <name>" -> "<name>"
+    fi
+}
+
+status
+gdbus monitor --system --dest org.bluez 2>/dev/null | while read -r line; do
+    case $line in *"'Connected': <"*) status ;; esac
+done

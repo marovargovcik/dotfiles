@@ -1,7 +1,22 @@
 #!/bin/bash
-active=$(sudo wg show interfaces 2>/dev/null)
-if [ -n "$active" ]; then
-    echo "VPN $active"
-else
-    echo "VPN off"
-fi
+# Bar block for WireGuard, run with persistent = true: prints the state once,
+# then sleeps on netlink and reprints after every link event. A tunnel is
+# recognised by its link type, which needs no root — unlike `wg show`, whose
+# sudo/PAM cost the old 5 s poll paid 720 times an hour. The interface comes
+# and goes with wg-quick up/down however they are invoked, menu or not.
+
+last=
+refresh() {
+    local name active=
+    while IFS=': ' read -r _ name _; do
+        active+="${active:+ }$name"
+    done < <(ip -o link show type wireguard 2>/dev/null)
+    local text="VPN ${active:-off}"
+    # ip monitor emits several lines per up/down; only repaint on a change.
+    [ "$text" = "$last" ] && return
+    last=$text
+    echo "$text"
+}
+
+refresh
+stdbuf -oL ip monitor link | while read -r _; do refresh; done

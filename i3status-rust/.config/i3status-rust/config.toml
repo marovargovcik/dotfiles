@@ -4,12 +4,17 @@ theme = "gruvbox-dark"
 [icons]
 icons = "material-nf"
 
+# Polling policy: nothing forks on a timer faster than once a minute. Blocks
+# that can react to events do (udev signal, D-Bus, netlink, inotify); the
+# intervals that remain are safety nets. Signal numbers in use: 8 USB (udev)
+# — see README §11.
+
 [[block]]
 block = "custom"
 command = "usb-status"
 json = true
 hide_when_empty = true
-interval = 30
+interval = 300
 signal = 8
 format = " $text "
 
@@ -20,7 +25,7 @@ cmd = "usb-menu"
 [[block]]
 block = "custom"
 command = "bt-status"
-interval = 3
+persistent = true
 format = " $text "
 
 [[block.click]]
@@ -40,7 +45,7 @@ cmd = "foot impala"
 [[block]]
 block = "custom"
 command = "wg-status"
-interval = 5
+persistent = true
 format = " $text "
 
 [[block.click]]
@@ -54,11 +59,15 @@ format = " $icon $percentage "
 full_format = " $icon $percentage "
 interval = 30
 
+# Native block: inotify on sysfs, no interval to set. Scroll changes brightness.
 [[block]]
-block = "custom"
-command = "scr=$(cat /sys/class/backlight/intel_backlight/brightness); max=$(cat /sys/class/backlight/intel_backlight/max_brightness); kbd=$(cat /sys/class/leds/tpacpi::kbd_backlight/brightness); case $kbd in 0) kbdl=off;; 1) kbdl=low;; 2) kbdl=high;; esac; printf '󰃟 %d%%  󰌌 %s' $((scr*100/max)) $kbdl"
-interval = 1
-format = " $text "
+block = "backlight"
+device = "intel_backlight"
+format = " $icon $brightness "
+
+# No keyboard-backlight block: reading that LED is an ACPI call and nothing
+# signals its changes, so showing it means polling. The lit keys are the
+# indicator. See README §11.
 
 [[block]]
 block = "keyboard_layout"
