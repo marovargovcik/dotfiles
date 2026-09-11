@@ -1,4 +1,4 @@
 [tools]
-java = "temurin-26"
+java = "oracle-graalvm-25"
 node = "26"
 usage = "latest"

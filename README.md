@@ -238,13 +238,23 @@ What the packages provide, so you know what *not* to write by hand:
 Then finish the user-level tooling:
 
 ```sh
-mise install                                    # node 26, temurin 26, usage — from mise/config.toml
+mise install                                    # node 26, Oracle GraalVM 25, usage — from mise/config.toml
 curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
 ```
 
 `pipewire` also carries `~/.config/pipewire/pipewire.conf.d/` (pipewire spawns
 wireplumber and pipewire-pulse itself; quantum 2048 against BT crackle). Only
 `*.conf` files there are loaded.
+
+**Scala:** mise handles Java versions, coursier (`cs`) installs the Scala tools.
+
+```sh
+curl -fL https://github.com/coursier/coursier/releases/latest/download/cs-x86_64-pc-linux.gz | gzip -d > /tmp/cs
+chmod +x /tmp/cs && /tmp/cs install cs && rm /tmp/cs
+cs install sbt scalafix scalafmt
+```
+
+Then run `:MetalsInstall` in nvim. `cs update` updates everything later.
 
 ## 6. Sleep and hibernate
 
