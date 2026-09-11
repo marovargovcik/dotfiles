@@ -1,21 +1,45 @@
 #!/bin/bash
 # Bar block for Bluetooth, run with persistent = true: prints the state once,
 # then sleeps on the system bus and reprints whenever BlueZ reports a device's
-# Connected property changing. Nothing runs between events. Should gdbus exit
-# (bluetoothd restarted, bus gone) the script exits with it and i3status-rs
-# starts it again a few seconds later.
+# Connected or Alias property changing. Nothing runs between events. Should
+# gdbus exit (bluetoothd restarted, bus gone) the script exits with it and
+# i3status-rs starts it again a few seconds later.
+#
+# State comes from BlueZ's D-Bus objects (busctl, parsed as JSON), not from
+# bluetoothctl's human-oriented output. One device is shown, "(+N)" for more:
+#   󰂯                        nothing connected
+#   󰂱 QCY MeloBuds N20        one device
+#   󰂱 QCY MeloBuds N20 (+1)   two devices
+# A device without a Name (typically an LE peer) is labelled by its MAC;
+# named devices are preferred for the label.
+
+read -r -d '' FORMAT <<'EOF'
+import json, sys
+try:
+    objects = json.load(sys.stdin)["data"][0]
+except Exception:
+    objects = {}
+devs = []
+for ifaces in objects.values():
+    d = {k: v["data"] for k, v in ifaces.get("org.bluez.Device1", {}).items()}
+    if d.get("Connected"):
+        named = bool(d.get("Name"))
+        devs.append((not named, (d.get("Alias") if named else d.get("Address")) or "?"))
+devs.sort()
+if not devs:
+    print("󰂯")
+else:
+    extra = f" (+{len(devs) - 1})" if len(devs) > 1 else ""
+    print(f"󰂱 {devs[0][1].strip()}{extra}")
+EOF
 
 status() {
-    local connected
-    connected=$(bluetoothctl devices Connected 2>/dev/null | head -1)
-    if [ -z "$connected" ]; then
-        echo "󰂯"
-    else
-        echo "󰂱 ${connected#Device * }"     # "Device <mac> <name>" -> "<name>"
-    fi
+    busctl --system --json=short call org.bluez / \
+        org.freedesktop.DBus.ObjectManager GetManagedObjects 2>/dev/null |
+        python3 -c "$FORMAT"
 }
 
 status
 gdbus monitor --system --dest org.bluez 2>/dev/null | while read -r line; do
-    case $line in *"'Connected': <"*) status ;; esac
+    case $line in *"'Connected': <"* | *"'Alias': <"*) status ;; esac
 done
