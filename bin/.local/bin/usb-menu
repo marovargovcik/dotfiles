@@ -10,71 +10,44 @@ term=foot
 
 fail() { swaynag -t error -m "usb-menu: $1"; exit 1; }
 
-declare -A tran diskof labels
+# jq walks lsblk's device tree, carrying the transport and the owning disk down
+# from the top (see usb-status for why TRAN needs carrying), and prints each
+# menu entry as three NUL-terminated strings: action, target, menu line. No
+# label or mountpoint can contain a NUL, so they arrive byte for byte.
+read -r -d '' MENU <<'EOF'
+def devs(t; d): (.tran // t) as $t | (d // .name) as $d
+    | (.tran = $t | .disk = $d), (.children[]? | devs($t; $d));
+[[inputs][0].blockdevices // [] | .[] | devs(null; null)
+ | select(.tran == "usb")]                   # add "mmc" here to cover the SD slot
+| map(select(.fstype | IN(null, "swap", "linux_raid_member", "LVM2_member") | not)) as $fs
+| ($fs[]
+   | (.label // .name) as $name
+   | if .fstype == "crypto_LUKS" then
+         "unlock", "/dev/\(.name)", "unlock  \($name)   \(.size)   encrypted"
+     elif .mountpoint then
+         "open", .mountpoint, "open    \($name)   \(.mountpoint)"
+     else
+         "mount", "/dev/\(.name)", "mount   \($name)   \(.size)   \(.fstype)"
+     end),
+  # Eject entries come last, one per drive, named after the labels on it: you
+  # recognise a stick by the label on it, not by the controller its vendor
+  # soldered on. Only a real label, never the kernel name: with nothing to
+  # recognise the stick by, the entry is better off naming the hardware.
+  (.[] | select(.type == "disk")
+   | .name as $n
+   | ([$fs[] | select(.disk == $n) | .label // empty] | join(", ")) as $labels
+   | ([.vendor, .model | values | gsub("_"; " ") | splits(" +")]
+      | map(select(. != "")) | join(" ") | if . == "" then $n end) as $model
+   | "eject", "/dev/\($n)",
+     if $labels != "" then "eject   \($labels)   \(.size)   \($model)"
+     else "eject   \($model)   \(.size)" end)
+EOF
+
 items=(); acts=(); targets=()
-disks=(); disk_model=(); disk_size=()
-
-# See usb-status for why this parses lsblk -P with eval, and uses NAME not PATH.
-while read -r line; do
-    NAME= TYPE= TRAN= FSTYPE= LABEL= SIZE= MOUNTPOINT= VENDOR= MODEL= PKNAME=
-    eval "$line"
-
-    # lsblk fills TRAN on the disk but leaves it empty on its partitions for USB
-    # (unlike nvme, where it propagates). Parents always precede their children,
-    # so both the transport and the owning disk carry down through PKNAME.
-    [ -n "$TRAN" ] || TRAN=${tran[$PKNAME]}
-    tran[$NAME]=$TRAN
-    if [ "$TYPE" = disk ]; then
-        diskof[$NAME]=$NAME
-    else
-        diskof[$NAME]=${diskof[$PKNAME]:-$PKNAME}
-    fi
-
-    [ "$TRAN" = usb ] || continue          # add mmc here to cover the SD slot
-    dev=/dev/$NAME
-    name=${LABEL:-$NAME}
-
-    if [ "$TYPE" = disk ]; then
-        model=$(echo "$VENDOR $MODEL" | tr '_' ' ' | xargs)
-        disks+=("$NAME"); disk_model+=("${model:-$NAME}"); disk_size+=("$SIZE")
-    fi
-
-    case "$FSTYPE" in
-        ""|swap|linux_raid_member|LVM2_member)
-            continue ;;
-        crypto_LUKS)
-            items+=("unlock  $name   $SIZE   encrypted")
-            acts+=(unlock); targets+=("$dev") ;;
-        *)
-            if [ -n "$MOUNTPOINT" ]; then
-                items+=("open    $name   $MOUNTPOINT")
-                acts+=(open); targets+=("$MOUNTPOINT")
-            else
-                items+=("mount   $name   $SIZE   $FSTYPE")
-                acts+=(mount); targets+=("$dev")
-            fi ;;
-    esac
-
-    # What to call the drive when ejecting it: you recognise a stick by the label
-    # on it, not by the controller its vendor soldered on.
-    # Only a real label, never the kernel name: with nothing to recognise the
-    # stick by, the eject entry is better off naming the hardware.
-    if [ -n "$LABEL" ]; then
-        owner=${diskof[$NAME]}
-        labels[$owner]="${labels[$owner]:+${labels[$owner]}, }$LABEL"
-    fi
-done < <(lsblk -P -o NAME,TYPE,TRAN,FSTYPE,LABEL,SIZE,MOUNTPOINT,VENDOR,MODEL,PKNAME)
-
-# Eject entries come last, and only once every label on the drive is known.
-for k in "${!disks[@]}"; do
-    n=${disks[$k]}
-    if [ -n "${labels[$n]}" ]; then
-        items+=("eject   ${labels[$n]}   ${disk_size[$k]}   ${disk_model[$k]}")
-    else
-        items+=("eject   ${disk_model[$k]}   ${disk_size[$k]}")
-    fi
-    acts+=(eject); targets+=("/dev/$n")
-done
+while IFS= read -r -d '' act && IFS= read -r -d '' target && IFS= read -r -d '' item; do
+    acts+=("$act"); targets+=("$target"); items+=("$item")
+done < <(lsblk -J -o NAME,TYPE,TRAN,FSTYPE,LABEL,SIZE,MOUNTPOINT,VENDOR,MODEL |
+         jq -n --raw-output0 "$MENU")
 
 [ ${#items[@]} -eq 0 ] && exit 0
 

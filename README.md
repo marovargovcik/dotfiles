@@ -145,7 +145,7 @@ sudo xbps-install -S \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
   git mise neovim starship bash-completion fzf zoxide eza bat delta lazygit \
-  lf chafa poppler-utils firefox ffmpeg curl lsof stow unzip nano
+  lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip nano
 ```
 
 Packages that look optional and are not:
@@ -419,11 +419,11 @@ exists, so they show as MODIFIED in the §17 drift check. Web UI:
 Plug a stick in, a block appears in the bar; click it and fuzzel offers
 mount / open / unlock / eject. Nothing auto-mounts; mounts land in
 `/run/media/maro/<label>`. Two scripts from the `bin` stow package (§5):
-`usb-status` (the block, reads `lsblk`) and `usb-menu` (the click handler,
-drives `udisksctl`).
+`usb-status` (the block, reads `lsblk -J` through `jq`) and `usb-menu` (the
+click handler, drives `udisksctl`).
 
 ```sh
-sudo xbps-install -S udisks2 ntfs-3g exfatprogs
+sudo xbps-install -S udisks2 ntfs-3g exfatprogs jq
 ```
 
 `udisks2` is D-Bus activated (no runit service). Reload the bus once after
@@ -674,7 +674,8 @@ kernel misbehaves.
   `json = true` custom block needs valid JSON even when it has nothing to say;
   `hide_when_empty` only acts on an empty `text` field (§11).
 - Stick is in `lsblk` but the block stays hidden → `TRAN` is empty on USB
-  partitions; the transport has to come from the parent disk via `PKNAME` (§11).
+  partitions; the transport has to be carried down from the parent disk in
+  `lsblk -J`'s tree (§11).
 - USB block appears only after up to 5 min → the udev rule is missing, or
   `udevadm control --reload` was not run (§11).
 - NTFS stick fails with `unknown filesystem type 'ntfs'` → `ntfs-3g` missing (§11).

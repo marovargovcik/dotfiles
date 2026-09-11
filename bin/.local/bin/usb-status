@@ -5,38 +5,24 @@
 #
 # Plug/unplug refreshes it within a frame via /etc/udev/rules.d/99-usb-bar.rules,
 # which signals i3status-rs; the block's interval is only a safety net.
-
-esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
-
-declare -A tran
-names=()
-state=Idle
-
-# lsblk -P quotes every value and hex-escapes anything special in it, so the
-# labels on a stranger's USB stick cannot smuggle anything through eval. NAME is
-# used rather than PATH, which would clobber $PATH here.
-while read -r line; do
-    NAME= TYPE= TRAN= FSTYPE= LABEL= MOUNTPOINT= PKNAME=
-    eval "$line"
-    # lsblk fills TRAN on the disk but leaves it empty on its partitions for USB
-    # (unlike nvme, where it propagates). The disk always precedes its children,
-    # so carry the transport down through PKNAME.
-    [ -n "$TRAN" ] || TRAN=${tran[$PKNAME]}
-    tran[$NAME]=$TRAN
-    [ "$TRAN" = usb ] || continue          # add mmc here to cover the SD slot
-    case "$TYPE" in part|disk) ;; *) continue ;; esac
-    case "$FSTYPE" in ""|swap|linux_raid_member|LVM2_member|crypto_LUKS) continue ;; esac
-    names+=("${LABEL:-$NAME}")
-    [ -n "$MOUNTPOINT" ] && state=Good
-done < <(lsblk -P -o NAME,TYPE,TRAN,FSTYPE,LABEL,MOUNTPOINT,PKNAME)
-
+#
+# lsblk -J hands over the device tree and jq writes the block's JSON, so labels
+# on a stranger's USB stick are escaped by jq, never pasted in by hand. lsblk
+# fills TRAN on the disk but leaves it empty on its partitions for USB (unlike
+# nvme, where it propagates), so devs() carries the transport down the tree.
+#
 # Always valid JSON, empty text when there is nothing to show: hide_when_empty
 # then drops the block. Printing *nothing* here does not hide it — the block
-# flips to "Invalid JSON" a few seconds in, once the empty parse surfaces.
-if [ ${#names[@]} -eq 0 ]; then
-    printf '{"text":""}\n'
-    exit 0
-fi
+# flips to "Invalid JSON" a few seconds in, once the empty parse surfaces. Hence
+# the fallback to no devices when lsblk prints nothing.
 
-text=$(printf '%s, ' "${names[@]}")
-printf '{"text":" %s","state":"%s"}\n' "$(esc "${text%, }")" "$state"
+lsblk -J -o NAME,TYPE,TRAN,FSTYPE,LABEL,MOUNTPOINT | jq -nc '
+    def devs(t): (.tran // t) as $t | (.tran = $t), (.children[]? | devs($t));
+    [[inputs][0].blockdevices // [] | .[] | devs(null)
+     | select(.tran == "usb")                # add "mmc" here to cover the SD slot
+     | select(.type == "part" or .type == "disk")
+     | select(.fstype | IN(null, "swap", "linux_raid_member", "LVM2_member", "crypto_LUKS") | not)]
+    | if length == 0 then {text: ""}
+      else {text: (" " + (map(.label // .name) | join(", "))),
+            state: (if any(.mountpoint) then "Good" else "Idle" end)}
+      end'
