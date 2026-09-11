@@ -1,0 +1,4 @@
+# Projects get uv-downloaded Pythons (~/.local/share/uv/python), never xbps's
+# /usr/bin/python3: a venv built on it breaks when xbps moves to the next minor
+# version, and that interpreter belongs to snapper-rollback and friends.
+python-preference = "only-managed"

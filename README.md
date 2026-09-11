@@ -144,8 +144,8 @@ sudo xbps-install -S \
   udisks2 ntfs-3g exfatprogs \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
-  git mise neovim starship bash-completion fzf zoxide eza bat delta lazygit \
-  lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip nano
+  git mise uv neovim starship bash-completion fzf zoxide eza bat delta \
+  lazygit lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip nano
 ```
 
 Packages that look optional and are not:
@@ -217,7 +217,7 @@ works.
 git clone https://github.com/marovargovcik/dotfiles ~/dotfiles
 rm ~/.bash_profile ~/.bashrc                        # /etc/skel copies block the symlinks
 mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config
-cd ~/dotfiles && stow bash bin foot fuzzel git i3status-rust lf mise nvim pipewire ssh sway swaylock
+cd ~/dotfiles && stow bash bin foot fuzzel git i3status-rust lf mise nvim pipewire ssh sway swaylock uv
 ```
 
 **Create the real directories first** — stow symlinks any missing directory
@@ -233,6 +233,7 @@ What the packages provide, so you know what *not* to write by hand:
 | `bin` | `~/.local/bin/{bt-status,wg-status,wg-menu,power-menu,start-statusbar,usb-status,usb-menu}` — power menu uses `loginctl`, no sudo; `bt-status`/`wg-status` are event-driven (`persistent = true` in the bar config), not polled |
 | `swaylock` | lock screen appearance (`~/.config/swaylock/config`) |
 | `i3status-rust` `foot` `fuzzel` `lf` `nvim` `git` `mise` `pipewire` `ssh` | app configs. `ssh` gives `~/.ssh/config` only — never a key |
+| `uv` | `~/.config/uv/uv.toml`: `python-preference = "only-managed"` — projects get uv-downloaded Pythons, never `/usr/bin/python3` (a venv on it breaks when xbps bumps the minor version) |
 
 Then finish the user-level tooling:
 
