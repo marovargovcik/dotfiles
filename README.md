@@ -238,7 +238,7 @@ What the packages provide, so you know what *not* to write by hand:
 Then finish the user-level tooling:
 
 ```sh
-mise install                                    # node 26, Oracle GraalVM 25, usage — from mise/config.toml
+mise install                                    # node 26, Oracle GraalVM 25 — from mise/config.toml
 curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
 ```
 

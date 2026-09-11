@@ -1,4 +1,3 @@
 [tools]
 java = "oracle-graalvm-25"
 node = "26"
-usage = "latest"
