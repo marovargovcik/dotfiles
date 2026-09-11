@@ -246,6 +246,13 @@ curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
 wireplumber and pipewire-pulse itself; quantum 2048 against BT crackle). Only
 `*.conf` files there are loaded.
 
+**What installs what:** xbps, unless one of these applies:
+
+- mise — language runtimes (Java, Node, Racket), so projects can pin a version.
+- uv — Python versions and Python tools.
+- a language's own installer for its tools — coursier (Scala), raco (Racket).
+- a vendor installer — last resort, as for Claude (§5) and 1Password (§9).
+
 **Scala:** mise handles Java versions, coursier (`cs`) installs the Scala tools.
 
 ```sh
