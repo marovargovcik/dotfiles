@@ -6,7 +6,7 @@ set $right l
 set $term foot
 set $menu fuzzel
 
-output * bg /usr/share/backgrounds/sway/Sway_Wallpaper_Blue_1920x1080.png fill
+output * bg ~/.local/share/backgrounds/wallhaven-mlyx18_1920x1080.png fill
 output eDP-1 scale 1
 
 input type:keyboard {
