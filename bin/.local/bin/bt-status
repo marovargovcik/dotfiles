@@ -12,31 +12,34 @@
 #   󰂱 QCY MeloBuds N20 (+1)   two devices
 # A device without a Name (typically an LE peer) is labelled by its MAC;
 # named devices are preferred for the label.
+#
+# Properties are read per device rather than with one GetManagedObjects call:
+# elogind 252's busctl can't encode dicts with integer keys as JSON (e.g. the
+# a{qv} ManufacturerData some headsets expose) and fails the whole call with
+# exit 1 and no output, which made every device look disconnected.
 
 read -r -d '' FORMAT <<'EOF'
-import json, sys
-try:
-    objects = json.load(sys.stdin)["data"][0]
-except Exception:
-    objects = {}
-devs = []
-for ifaces in objects.values():
-    d = {k: v["data"] for k, v in ifaces.get("org.bluez.Device1", {}).items()}
-    if d.get("Connected"):
-        named = bool(d.get("Name"))
-        devs.append((not named, (d.get("Alias") if named else d.get("Address")) or "?"))
-devs.sort()
-if not devs:
-    print("󰂯")
-else:
-    extra = f" (+{len(devs) - 1})" if len(devs) > 1 else ""
-    print(f"󰂱 {devs[0][1].strip()}{extra}")
+[inputs | select(.[0].data == true)
+        | if length > 3 then [0, .[1].data] else [1, .[2].data] end]
+| sort
+| if length == 0 then "󰂯"
+  else "󰂱 \(.[0][1] | gsub("^\\s+|\\s+$"; ""))"
+       + (if length > 1 then " (+\(length - 1))" else "" end)
+  end
 EOF
 
+# One JSON array per device: [Connected, Alias, Address(, Name)]. get-property
+# stops at the first missing property, so Name is asked for last and its
+# presence is what marks a device as named.
 status() {
-    busctl --system --json=short call org.bluez / \
-        org.freedesktop.DBus.ObjectManager GetManagedObjects 2>/dev/null |
-        python3 -c "$FORMAT"
+    local path
+    busctl --system --list tree org.bluez 2>/dev/null |
+        grep -E '^/org/bluez/hci[0-9]+/dev_[0-9A-F_]+$' |
+        while read -r path; do
+            printf '[%s]\n' "$(busctl --system --json=short get-property \
+                org.bluez "$path" org.bluez.Device1 \
+                Connected Alias Address Name 2>/dev/null | paste -sd,)"
+        done | jq -rn "$FORMAT"
 }
 
 status
