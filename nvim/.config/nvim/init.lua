@@ -18,8 +18,15 @@ vim.pack.add({
   'https://github.com/nvim-lualine/lualine.nvim',
 })
 
-require('nvim-treesitter').setup({
-  highlight = { enable = true },
+-- nvim-treesitter's main branch only installs parsers (no-op when present);
+-- highlighting is Neovim's own and has to be started per filetype.
+local treesitter_languages = { 'python', 'javascript', 'typescript', 'html', 'css' }
+require('nvim-treesitter').install(treesitter_languages)
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = treesitter_languages,
+  -- pcall: until the parser is built, start() throws and would abort the other
+  -- FileType handlers, LSP attach included.
+  callback = function() pcall(vim.treesitter.start) end,
 })
 
 require('lualine').setup({
