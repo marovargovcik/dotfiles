@@ -51,7 +51,36 @@ require('lualine').setup({
 vim.lsp.config('*', {
   capabilities = require('cmp_nvim_lsp').default_capabilities(),
 })
-vim.lsp.enable('ts_ls')
+
+-- Python: use the project's own ruff and interpreter from <project>/.venv, so the
+-- editor runs the versions the commit hook does, wherever nvim was started.
+local function venv_bin(root, name)
+  local path = root and vim.fs.joinpath(root, '.venv', 'bin', name)
+  return (path and vim.fn.executable(path) == 1) and path or nil
+end
+
+-- ruff only attaches (and so only formats on save) where the project pins it in
+-- its .venv; a black or flake8 project is left alone.
+vim.lsp.config('ruff', {
+  root_dir = function(bufnr, on_dir)
+    local root = vim.fs.root(bufnr, { 'pyproject.toml', 'ruff.toml', '.ruff.toml' })
+    if venv_bin(root, 'ruff') then on_dir(root) end
+  end,
+  cmd = function(dispatchers, config)
+    return vim.lsp.rpc.start({ venv_bin(config.root_dir, 'ruff'), 'server' }, dispatchers)
+  end,
+})
+
+vim.lsp.config('basedpyright', {
+  -- basedpyright defaults to its strictest mode; 'basic' keeps it from arguing with mypy.
+  settings = { basedpyright = { analysis = { typeCheckingMode = 'basic' } } },
+  before_init = function(_, config)
+    local python = venv_bin(config.root_dir, 'python')
+    if python then config.settings.python = { pythonPath = python } end
+  end,
+})
+
+vim.lsp.enable({ 'ts_ls', 'ruff', 'basedpyright' })
 
 -- nvim-metals attaches its own LSP client; do not add metals to lspconfig.
 local metals = require('metals')
@@ -72,6 +101,10 @@ vim.api.nvim_create_autocmd('LspAttach', {
     vim.keymap.set('n', 'K',  vim.lsp.buf.hover, opts)
     vim.keymap.set('n', 'gr', vim.lsp.buf.references, opts)
     vim.keymap.set('n', '<leader>rn', vim.lsp.buf.rename, opts)
+
+    -- Two Python servers attach; hover comes from basedpyright, not ruff.
+    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+    if client and client.name == 'ruff' then client.server_capabilities.hoverProvider = false end
   end,
 })
 
