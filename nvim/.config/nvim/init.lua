@@ -80,7 +80,7 @@ vim.lsp.config('basedpyright', {
   end,
 })
 
-vim.lsp.enable({ 'ts_ls', 'ruff', 'basedpyright' })
+vim.lsp.enable({ 'ts_ls', 'oxlint', 'oxfmt', 'ruff', 'basedpyright' })
 
 -- nvim-metals attaches its own LSP client; do not add metals to lspconfig.
 local metals = require('metals')
