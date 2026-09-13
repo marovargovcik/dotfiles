@@ -1,3 +1,4 @@
 [tools]
 java = "oracle-graalvm-25"
 node = "26"
+tree-sitter = "latest"

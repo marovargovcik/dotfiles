@@ -239,7 +239,7 @@ What the packages provide, so you know what *not* to write by hand:
 Then finish the user-level tooling:
 
 ```sh
-mise install                                    # node 26, Oracle GraalVM 25 — from mise/config.toml
+mise install                                    # node 26, Oracle GraalVM 25, tree-sitter CLI — from mise/config.toml
 curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
 ```
 
@@ -249,7 +249,8 @@ wireplumber and pipewire-pulse itself; quantum 2048 against BT crackle). Only
 
 **What installs what:** xbps, unless one of these applies:
 
-- mise — language runtimes (Java, Node, Racket), so projects can pin a version.
+- mise — language runtimes (Java, Node, Racket), so projects can pin a version;
+  and the tree-sitter CLI, whose xbps package is older than nvim-treesitter requires.
 - uv — Python versions and Python tools.
 - a language's own installer for its tools — coursier (Scala), raco (Racket).
 - a vendor installer — last resort, as for Claude (§5) and 1Password (§9).
