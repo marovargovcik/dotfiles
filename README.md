@@ -232,7 +232,8 @@ What the packages provide, so you know what *not* to write by hand:
 | `sway` | keyboard `us,sk` (Alt+Shift toggles), `$mod`=Super, touchpad natural scroll, execs: `pipewire`, `gnome-keyring-daemon --components=secrets`, `wl-paste … clipman`, `/usr/libexec/xfce-polkit`, swayidle (`timeout 300` lock, `idlehint 300`, `before-sleep`, `after-resume`) |
 | `bin` | `~/.local/bin/{bt-status,wg-status,wg-menu,power-menu,start-statusbar,usb-status,usb-menu}` — power menu uses `loginctl`, no sudo; `bt-status`/`wg-status` are event-driven (`persistent = true` in the bar config), not polled |
 | `swaylock` | lock screen appearance (`~/.config/swaylock/config`) |
-| `i3status-rust` `foot` `fuzzel` `lf` `nvim` `git` `mise` `pipewire` `ssh` | app configs. `ssh` gives `~/.ssh/config` only — never a key |
+| `fuzzel` | launcher lists only `~/.config/fuzzel/applications` (symlinks to `/usr/share/applications`); sway sets `XDG_DATA_*` for it, `launch-prefix` unsets them for launched apps |
+| `i3status-rust` `foot` `lf` `nvim` `git` `mise` `pipewire` `ssh` | app configs. `ssh` gives `~/.ssh/config` only — never a key |
 | `uv` | `~/.config/uv/uv.toml`: `python-preference = "only-managed"` — projects get uv-downloaded Pythons, never `/usr/bin/python3` (a venv on it breaks when xbps bumps the minor version) |
 
 Then finish the user-level tooling:

@@ -4,7 +4,8 @@ set $down j
 set $up k
 set $right l
 set $term foot
-set $menu fuzzel
+# Launcher lists only the .desktop files in ~/.config/fuzzel/applications.
+set $menu env XDG_DATA_HOME=$HOME/.config/fuzzel XDG_DATA_DIRS=$HOME/.config/fuzzel fuzzel
 
 output * bg ~/.local/share/backgrounds/wallhaven-mlyx18_2560x1440.png fill
 set $laptop eDP-1
