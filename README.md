@@ -144,7 +144,7 @@ sudo xbps-install -S \
   udisks2 ntfs-3g exfatprogs \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
-  git mise uv neovim starship bash-completion fzf zoxide eza bat delta \
+  git mise uv neovim gcc starship bash-completion fzf zoxide eza bat delta \
   lazygit lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip nano
 ```
 
@@ -160,6 +160,7 @@ Packages that look optional and are not:
 | `ntfs-3g` | udisks2 mounting NTFS sticks |
 | `cronie` | snapper timeline snapshots (`/etc/cron.hourly/snapper`) |
 | `socklog-void` | any syslog at all; Void ships no logger |
+| `gcc` | nvim-treesitter compiling its parsers |
 
 Manual, outside xbps (done later in §9 and §5): 1Password tarball, Claude Code.
 
