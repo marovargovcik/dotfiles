@@ -144,7 +144,7 @@ sudo xbps-install -S \
   udisks2 ntfs-3g exfatprogs \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
-  git mise uv neovim gcc starship bash-completion fzf zoxide eza bat delta \
+  git git-lfs mise uv neovim gcc starship bash-completion fzf zoxide eza bat delta \
   lazygit lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip nano
 ```
 
@@ -241,6 +241,7 @@ Then finish the user-level tooling:
 
 ```sh
 mise install                                    # node 26, Oracle GraalVM 25, tree-sitter CLI — from mise/config.toml
+git lfs install
 curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
 ```
 
