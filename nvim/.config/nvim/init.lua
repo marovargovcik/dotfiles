@@ -1,5 +1,7 @@
 vim.opt.number = true
 vim.opt.relativenumber = true
+-- Absolute and relative number side by side; blank on wrapped continuation lines.
+vim.opt.statuscolumn = "%s%4{v:virtnum ? '' : v:lnum} %3{v:virtnum ? '' : v:relnum} "
 vim.opt.showmode = false
 
 -- cw/cW as dw/yw, not Vim's special-cased ce/cE behavior (:help cw).
