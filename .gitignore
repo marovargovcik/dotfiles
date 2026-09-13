@@ -12,3 +12,5 @@ bin/**
 !bin/.local/bin/usb-status
 !bin/.local/bin/wg-menu
 !bin/.local/bin/wg-status
+
+fuzzel/.config/fuzzel/applications/
