@@ -135,7 +135,7 @@ Then everything else in one go (this is the complete `xbps-query -m` set):
 ```sh
 sudo xbps-install -S \
   linux7.2 mesa-dri intel-video-accel \
-  elogind polkit xfce-polkit gnome-keyring libsecret \
+  dbus elogind polkit xfce-polkit gnome-keyring libsecret \
   sway swaylock swayidle foot fuzzel i3status-rust nerd-fonts brightnessctl \
   grim slurp wev clipman xdg-desktop-portal xdg-desktop-portal-wlr xdg-utils \
   pipewire wireplumber wiremix bluez bluetui libspa-bluetooth \
