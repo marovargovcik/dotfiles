@@ -121,6 +121,7 @@ bindsym Print exec grim
 bindsym $mod+c exec clipman pick --tool=CUSTOM --tool-args="fuzzel -d"
 
 exec pipewire
+# Secret service for 1Password; also needs the PAM lines (README §8) and dbus-run-session.
 exec gnome-keyring-daemon --start --daemonize --components=secrets
 exec wl-paste -t text --watch clipman store
 exec /usr/libexec/xfce-polkit

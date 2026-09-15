@@ -10,7 +10,7 @@ be typed as-is unless it says "machine-specific".
 x86_64 glibc, runit, dracut, GRUB/UEFI, btrfs + snapper, Sway, elogind, iwd,
 PipeWire. Hostname `t14`, user `maro`, locale `en_US.UTF-8`, TZ `Europe/Bratislava`.
 
-State reflected here was verified against the running system on 2026-09-10
+State reflected here was verified against the running system on 2026-09-15
 (`/etc` diffed against the shipped package files, `/var/service`, `xbps-query -m`).
 
 ---
@@ -98,7 +98,6 @@ xbps-reconfigure -f glibc-locales
 ln -sf /usr/share/zoneinfo/Europe/Bratislava /etc/localtime
 
 passwd
-xbps-install -S sudo
 useradd -m -G wheel,audio,video,input,storage -s /bin/bash maro
 passwd maro
 visudo            # uncomment: %wheel ALL=(ALL:ALL) ALL
@@ -127,7 +126,7 @@ missing from fstab.
 Log in as `maro` on the TTY. The wired port needs `dhcpcd` (iwd is Wi-Fi only):
 
 ```sh
-sudo ln -s /etc/sv/dhcpcd /var/service/     # brings enp0s31f6 up within seconds
+sudo ln -s /etc/sv/dhcpcd /var/service/
 sudo xbps-install -Su xbps && sudo xbps-install -Su
 ```
 
@@ -136,7 +135,7 @@ Then everything else in one go (this is the complete `xbps-query -m` set):
 ```sh
 sudo xbps-install -S \
   linux7.2 mesa-dri intel-video-accel \
-  elogind polkit xfce-polkit gnome-keyring libsecret dbus \
+  elogind polkit xfce-polkit gnome-keyring libsecret \
   sway swaylock swayidle foot fuzzel i3status-rust nerd-fonts brightnessctl \
   grim slurp wev clipman xdg-desktop-portal xdg-desktop-portal-wlr xdg-utils \
   pipewire wireplumber wiremix bluez bluetui libspa-bluetooth \
@@ -145,7 +144,7 @@ sudo xbps-install -S \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
   git git-lfs mise uv neovim gcc starship bash-completion fzf fd ripgrep zoxide eza bat delta \
-  lazygit lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip nano
+  lazygit lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip
 ```
 
 Packages that look optional and are not:
@@ -161,8 +160,6 @@ Packages that look optional and are not:
 | `cronie` | snapper timeline snapshots (`/etc/cron.hourly/snapper`) |
 | `socklog-void` | any syslog at all; Void ships no logger |
 | `gcc` | nvim-treesitter compiling its parsers |
-
-Manual, outside xbps (done later in §9 and §5): 1Password tarball, Claude Code.
 
 ## 3. Services
 
@@ -185,8 +182,6 @@ elogind grub-btrfs iwd nanoklogd polkitd snapperd socklog-unix udevd
 
 plus `iptables ip6tables tlp`, enabled in §14–§15 once their files exist.
 
-The logging services go first so they capture what starts after them.
-
 **polkit gotcha:** after installing polkit the system bus does not see the new
 `org.freedesktop.PolicyKit1` activation file until reloaded; without this
 `polkitd` starts but nothing can talk to it:
@@ -204,13 +199,8 @@ sudo usermod -aG lpadmin maro      # manage CUPS queues without sudo
 sudo usermod -aG socklog maro      # read /var/log/socklog without sudo
 ```
 
-Final: `wheel audio video input storage lpadmin socklog`. No `_seatd` group —
-libseat uses elogind. `brightnessctl` ships udev rules granting `video`/`input`
-write access to backlights; they apply after a reboot. Re-login for group
-changes.
-
-`/var/log/socklog` is `drwxr-s--- root:socklog`; re-login before `svlogtail`
-works.
+Final: `wheel audio video input storage lpadmin socklog`. Re-login for group
+changes to apply (`svlogtail` and backlight keys need them).
 
 ## 5. Dotfiles (stow)
 
@@ -218,7 +208,7 @@ works.
 git clone https://github.com/marovargovcik/dotfiles ~/dotfiles
 rm ~/.bash_profile ~/.bashrc                        # /etc/skel copies block the symlinks
 mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config
-cd ~/dotfiles && stow bash bin foot fuzzel git i3status-rust lf mise nvim pipewire ssh sway swaylock uv
+cd ~/dotfiles && stow */
 ```
 
 **Create the real directories first** — stow symlinks any missing directory
@@ -229,30 +219,25 @@ What the packages provide, so you know what *not* to write by hand:
 
 | Package | Provides |
 |---|---|
-| `bash` | `.bash_profile` launches `exec dbus-run-session ssh-agent sway` on tty1 (session bus + SSH agent for the whole session; 1Password/secret-service need the bus); `.bashrc` with starship, mise `--shims`, zoxide, aliases |
-| `sway` | keyboard `us,sk` (Alt+Shift toggles), `$mod`=Super, touchpad natural scroll, execs: `pipewire`, `gnome-keyring-daemon --components=secrets`, `wl-paste … clipman`, `/usr/libexec/xfce-polkit`, swayidle (`timeout 300` lock, `idlehint 300`, `before-sleep`, `after-resume`) |
-| `bin` | `~/.local/bin/{bt-status,wg-status,wg-menu,power-menu,start-statusbar,usb-status,usb-menu}` — power menu uses `loginctl`, no sudo; `bt-status`/`wg-status` are event-driven (`persistent = true` in the bar config), not polled |
-| `swaylock` | lock screen appearance (`~/.config/swaylock/config`) |
-| `fuzzel` | launcher lists only `~/.config/fuzzel/applications` (not in git; add an app with `mkdir -p ~/.config/fuzzel/applications && ln -s /usr/share/applications/<app>.desktop ~/.config/fuzzel/applications/`); sway sets `XDG_DATA_*` for it, `launch-prefix` unsets them for launched apps |
-| `i3status-rust` `foot` `lf` `nvim` `git` `mise` `pipewire` `ssh` | app configs. `ssh` gives `~/.ssh/config` only — never a key |
-| `uv` | `~/.config/uv/uv.toml`: `python-preference = "only-managed"` — projects get uv-downloaded Pythons, never `/usr/bin/python3` (a venv on it breaks when xbps bumps the minor version) |
+| `bash` | `.bash_profile` starts sway on tty1 inside `dbus-run-session ssh-agent` — the session bus and SSH agent everything else relies on |
+| `sway` | starts the session daemons; §6 relies on its swayidle line, §8 on its keyring line |
+| `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
+| `fuzzel` | launcher lists only `~/.config/fuzzel/applications` (not in git; add an app with `mkdir -p ~/.config/fuzzel/applications && ln -s /usr/share/applications/<app>.desktop ~/.config/fuzzel/applications/`) |
+| `ssh` | `~/.ssh/config` only — never a key |
+| the rest | app configs; comments in the files say why |
 
 Then finish the user-level tooling:
 
 ```sh
-mise install                                    # node 26, Oracle GraalVM 25, tree-sitter CLI — from mise/config.toml
+mise install                                    # tools in mise/.config/mise/config.toml
 git lfs install
 curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
 ```
 
-`pipewire` also carries `~/.config/pipewire/pipewire.conf.d/` (pipewire spawns
-wireplumber and pipewire-pulse itself; quantum 2048 against BT crackle). Only
-`*.conf` files there are loaded.
-
 **What installs what:** xbps, unless one of these applies:
 
-- mise — language runtimes (Java, Node, Racket), so projects can pin a version;
-  and the tree-sitter CLI, whose xbps package is older than nvim-treesitter requires.
+- mise — language runtimes, so projects can pin a version, and dev tools xbps
+  lacks or ships too old.
 - uv — Python versions and Python tools.
 - a language's own installer for its tools — coursier (Scala), raco (Racket).
 - a vendor installer — last resort, as for Claude (§5) and 1Password (§9).
@@ -270,9 +255,8 @@ Then run `:MetalsInstall` in nvim. `cs update` updates everything later.
 ## 6. Sleep and hibernate
 
 elogind decides when (lid, power key, idle); swayidle locks the screen and
-reports idle to elogind (its `idlehint` verb — the sway package carries it,
-§5, and without it the machine never suspends); the power menu runs `loginctl
-suspend-then-hibernate`. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
+reports idle to elogind (`idlehint`, in the sway config); the power menu runs
+`loginctl suspend-then-hibernate`. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
 
 **`/etc/elogind/logind.conf`** (shipped file is all comments; append):
 
@@ -342,9 +326,8 @@ loginctl suspend-then-hibernate             # the real thing
 | + 10 min | suspend to RAM (S3) | `IdleActionSec=10min` |
 | + 8 h suspended | RTC wakes the machine, writes the image to swap, powers off | `HibernateDelaySec=8h` |
 
-Lid close and the power key go straight to suspend. Hibernation only ever
-follows a suspend that lasted 8 h. Resume from RAM takes 2–3 s, from disk
-15–30 s via GRUB. History: `/var/log/socklog/{kernel,secure}/`.
+Lid close and the power key go straight to suspend. History:
+`/var/log/socklog/{kernel,secure}/`.
 
 ## 7. Networking: iwd (Wi-Fi) + dhcpcd (wired) + resolvconf
 
@@ -412,9 +395,7 @@ rm -rf 1password-* 1password-latest.tar.gz
 ```
 
 Run `after-install.sh` **after** the user exists — it bakes the list of human
-users into the polkit policy. `/etc/1password/custom_allowed_browsers` is left at
-its shipped (comment-only) default; Firefox is allowed out of the box. The bar
-has a `1password --toggle` block; 1Password is not exec'd from sway.
+users into the polkit policy. `/etc/1password/` is left at its shipped defaults.
 
 ## 10. Printing: Brother DCP-1610W
 
@@ -440,16 +421,10 @@ exists, so they show as MODIFIED in the §17 drift check. Web UI:
 
 Plug a stick in, a block appears in the bar; click it and fuzzel offers
 mount / open / unlock / eject. Nothing auto-mounts; mounts land in
-`/run/media/maro/<label>`. Two scripts from the `bin` stow package (§5):
-`usb-status` (the block, reads `lsblk -J` through `jq`) and `usb-menu` (the
-click handler, drives `udisksctl`).
+`/run/media/maro/<label>`. The scripts are `usb-status` and `usb-menu` (§5).
 
-```sh
-sudo xbps-install -S udisks2 ntfs-3g exfatprogs jq
-```
-
-`udisks2` is D-Bus activated (no runit service). Reload the bus once after
-installing it, as for polkit in §3:
+`udisks2` (installed in §2) is D-Bus activated, no runit service. Reload the
+bus once after installing it, as for polkit in §3:
 
 ```sh
 sudo dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
@@ -470,11 +445,8 @@ END
 sudo udevadm control --reload
 ```
 
-Bar signal numbers in use: **8** USB (this rule) — pick an unused one for any
-new rule and add it here. Nothing else in the bar polls faster than once a
-minute: `bt-status`/`wg-status` wait on D-Bus/netlink, the screen backlight is
-the native block. No keyboard-backlight block on purpose — Fn+Space raises no
-event on this machine, so showing it would mean polling.
+Signal **8** is USB; the bar config lists the numbers in use — pick a free one
+for any new rule.
 
 Verify:
 
@@ -485,15 +457,12 @@ usb-status                                           # {"text":""} when idle
 
 ## 12. Btrfs: snapshots, rollback, scrub
 
-- `snapper -c root` covers `/` (`@`) only. Retention in
-  `/etc/snapper/configs/root` is the create-config default (hourly 10 / daily 10
-  / monthly 10 / yearly 10, `NUMBER_LIMIT=50`).
+- `snapper -c root` covers `/` (`@`) only. `/etc/snapper/configs/root` is the
+  create-config default.
 - Timeline + cleanup run from `/etc/cron.hourly/snapper` → needs `cronie`.
-- `grub-btrfsd` (service) watches `/.snapshots` and keeps `grub-btrfs.cfg`
-  current; snapshots appear as a GRUB submenu. `/etc/default/grub-btrfs/config`
-  is default.
-- **`/etc/snapper-rollback.conf`** — set the device (shipped default is
-  `/dev/sda42`, i.e. non-functional):
+- `grub-btrfs` (service) watches `/.snapshots`; snapshots appear as a GRUB
+  submenu. `/etc/default/grub-btrfs/config` is default.
+- **`/etc/snapper-rollback.conf`** — set the device:
 
 ```ini
 [root]
@@ -511,8 +480,7 @@ sudo snapper -c root list
 sudo snapper-rollback <N> && sudo reboot          # or boot the snapshot from GRUB first
 ```
 
-**`/etc/cron.monthly/btrfs-scrub`** — verifies every checksum on the disk once
-a month, so silent corruption is caught while a snapshot still has the file:
+**`/etc/cron.monthly/btrfs-scrub`** — monthly checksum scrub:
 
 ```sh
 sudo install -m 0755 -o root -g root /dev/stdin /etc/cron.monthly/btrfs-scrub <<'END'
@@ -532,16 +500,16 @@ Nothing secret is in this repo; 1Password is the store. After signing in:
   so `/etc/wireguard` is unused.
 
 Sudo fragment so `wg-menu` works without a prompt (the bar block itself needs
-no root — it reads the link type) — **`/etc/sudoers.d/wg-quick`**:
+no root — it reads the link type) — **`/etc/sudoers.d/wg`**:
 
 ```sh
-sudo install -m 0440 -o root -g root /dev/stdin /etc/sudoers.d/wg-quick <<'END'
+sudo install -m 0440 -o root -g root /dev/stdin /etc/sudoers.d/wg <<'END'
 maro ALL=(ALL) NOPASSWD: /usr/bin/wg-quick, /usr/bin/wg
 END
 sudo visudo -c
 ```
 
-This is the only sudoers fragment. Power actions go through `loginctl`.
+This is the only sudoers fragment.
 
 ## 14. Firewall: iptables
 
@@ -585,8 +553,7 @@ sudo iptables -L INPUT -n --line-numbers      # 7 rules, policy DROP
 
 ## 15. Power: tlp
 
-Installed in §2. Defaults untouched; overrides go in `/etc/tlp.d/`. Coexists
-with elogind (§6).
+Installed in §2. Defaults untouched; overrides go in `/etc/tlp.d/`.
 
 ```sh
 sudo ln -s /etc/sv/tlp /var/service/
@@ -604,8 +571,7 @@ sudo dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
 fwupdmgr refresh --force && fwupdmgr get-updates
 ```
 
-`fwupdmgr update` when one is listed; it reboots into the flash. BIOS at
-setup: `N34ET71W (1.71)`.
+`fwupdmgr update` when one is listed; it reboots into the flash.
 
 ## 17. Audit on a rebuilt machine
 
@@ -677,9 +643,6 @@ kernel misbehaves.
   `/var/log/socklog/<log>/current` directly. Permission denied → re-login.
 - `loginctl` empty / lid does nothing → `dbus` or `elogind` not running, or sway
   was launched without `dbus-run-session`.
-- Sway died and you are back on a TTY right after editing elogind config → you
-  ran `sv restart elogind` inside the session; it recreates `seat0` (§6). Reboot
-  to apply instead.
 - Screen locks but never suspends → missing `idlehint` in the swayidle line (§6).
 - Wired link up but no DHCP → `dhcpcd` service not enabled (§2).
 - `/etc/resolv.conf` says "Generated by dhcpcd" → run `sudo dhcpcd -n enp0s31f6`.
@@ -692,18 +655,10 @@ kernel misbehaves.
 - USB block never appears → `udisks2` not installed, or the D-Bus `ReloadConfig`
   after installing it was skipped (§11). `usb-status` run by hand prints exactly
   the JSON the bar parses.
-- USB block reads `Invalid JSON` → `usb-status` printed nothing at all. A
-  `json = true` custom block needs valid JSON even when it has nothing to say;
-  `hide_when_empty` only acts on an empty `text` field (§11).
-- Stick is in `lsblk` but the block stays hidden → `TRAN` is empty on USB
-  partitions; the transport has to be carried down from the parent disk in
-  `lsblk -J`'s tree (§11).
 - USB block appears only after up to 5 min → the udev rule is missing, or
   `udevadm control --reload` was not run (§11).
 - NTFS stick fails with `unknown filesystem type 'ntfs'` → `ntfs-3g` missing (§11).
 - Keyboard backlight: `tpacpi::kbd_backlight`, levels 0–2 (`brightnessctl -d tpacpi::kbd_backlight set 1`).
-- `Shift+XF86MonBrightness*` cannot be bound in Sway; use `$mod+`.
-- atuin was removed: it fights starship's `PROMPT_COMMAND`.
 - `sv status iptables` flapping → `/etc/iptables/iptables.rules` missing (§14).
 - Printer vanished after the firewall → the `udp --dport 5353` line is missing (§14).
 
@@ -721,10 +676,9 @@ kernel misbehaves.
 | `/etc/pam.d/system-login` | §8 |
 | `/opt/1Password` `/usr/bin/1password` `/usr/share/applications/1password.desktop` `/etc/1password/` | §9 |
 | `/etc/cups/ppd/Brother_DCP-1610W_series.ppd` | generated by `lpadmin` (§10) |
-| `/etc/snapper-rollback.conf` `/etc/default/grub-btrfs/config` | §12 |
 | `/etc/udev/rules.d/99-usb-bar.rules` | §11 |
-| `/etc/sudoers.d/wg-quick` | §13 |
-| `/etc/cron.monthly/btrfs-scrub` | §12 |
+| `/etc/snapper-rollback.conf` `/etc/default/grub-btrfs/config` `/etc/cron.monthly/btrfs-scrub` | §12 |
+| `/etc/sudoers.d/wg` | §13 |
 | `/etc/iptables/{iptables,ip6tables}.rules` | §14 |
 | `/etc/tlp.conf` (shipped) `/etc/tlp.d/` | §15 |
 | `/var/log/socklog/*` `/etc/sv/{socklog-unix,nanoklogd}` | `socklog-void`, untouched defaults (§2–3) |

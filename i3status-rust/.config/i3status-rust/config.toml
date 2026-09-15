@@ -67,7 +67,7 @@ format = " $icon $brightness "
 
 # No keyboard-backlight block: reading that LED is an ACPI call and nothing
 # signals its changes, so showing it means polling. The lit keys are the
-# indicator. See README §11.
+# indicator.
 
 [[block]]
 block = "keyboard_layout"
