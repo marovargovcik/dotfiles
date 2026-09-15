@@ -34,7 +34,6 @@ lf() {
 
 eval "$(starship init bash)"
 command -v mise >/dev/null && eval "$(mise activate bash --shims)"
-command -v direnv >/dev/null && eval "$(direnv hook bash)"
 
 # zoxide last: it wraps cd, and later inits win.
 eval "$(zoxide init bash)"
