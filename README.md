@@ -414,7 +414,7 @@ lpoptions -p Brother_DCP-1610W_series | grep -o "printer-make-and-model='[^']*'"
 
 `cupsd.conf`, `cups-files.conf` and `cups-browsed.conf` are untouched defaults.
 `printers.conf` and `subscriptions.conf` are written by cupsd once the queue
-exists, so they show as MODIFIED in the §17 drift check. Web UI:
+exists, so they show as MODIFIED in the §18 drift check. Web UI:
 `http://localhost:631`.
 
 ## 11. Removable media: udisks2 + fuzzel
@@ -573,7 +573,17 @@ fwupdmgr refresh --force && fwupdmgr get-updates
 
 `fwupdmgr update` when one is listed; it reboots into the flash.
 
-## 17. Audit on a rebuilt machine
+## 17. Touchpad: RMI4 over SMBus
+
+The touchpad defaults to PS/2, which feels sluggish and misses taps. Switch it to RMI4:
+
+```sh
+echo 'options psmouse synaptics_intertouch=1' | sudo tee /etc/modprobe.d/psmouse.conf
+sudo dracut --force --regenerate-all
+sudo reboot
+```
+
+## 18. Audit on a rebuilt machine
 
 ```sh
 cat /sys/power/mem_sleep                          # s2idle [deep]
@@ -592,6 +602,7 @@ sudo visudo -c
 sudo iptables -L INPUT -n | head -1               # Chain INPUT (policy DROP)
 sudo tlp-stat -s | grep -E 'TLP status|Mode'
 fwupdmgr get-devices >/dev/null && echo fwupd-ok
+swaymsg -t get_inputs | jq -r '.[] | select(.type=="touchpad") | .name'   # Synaptics TM3471-030, not SynPS/2
 ls /etc/cron.monthly/btrfs-scrub
 ```
 
@@ -619,7 +630,7 @@ Expected modified set, 19 files: `fstab group passwd subuid subgid sudoers`
 `cups/{printers,subscriptions}.conf` — those last two are cupsd's own runtime
 state, not hand edits. Anything else is undocumented drift.
 
-## 18. Maintenance
+## 19. Maintenance
 
 ```sh
 sudo snapper -c root create --description "pre-update"
@@ -681,5 +692,6 @@ kernel misbehaves.
 | `/etc/sudoers.d/wg` | §13 |
 | `/etc/iptables/{iptables,ip6tables}.rules` | §14 |
 | `/etc/tlp.conf` (shipped) `/etc/tlp.d/` | §15 |
+| `/etc/modprobe.d/psmouse.conf` | §17 |
 | `/var/log/socklog/*` `/etc/sv/{socklog-unix,nanoklogd}` | `socklog-void`, untouched defaults (§2–3) |
 | everything else under `~` | stow packages in this repo |
