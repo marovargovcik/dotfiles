@@ -224,6 +224,7 @@ What the packages provide, so you know what *not* to write by hand:
 | `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications` (not in git; add an app with `mkdir -p ~/.config/fuzzel/applications && ln -s /usr/share/applications/<app>.desktop ~/.config/fuzzel/applications/`) |
 | `ssh` | `~/.ssh/config` only — never a key |
+| `xdg` | lowercase `~/downloads` and other user folders |
 | the rest | app configs; comments in the files say why |
 
 Then finish the user-level tooling:
