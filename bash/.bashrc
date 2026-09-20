@@ -14,9 +14,6 @@ alias cat='bat'
 alias lg='lazygit'
 
 set -o vi
-export EDITOR=nvim
-export VISUAL=nvim
-export PATH="$HOME/.local/bin:$PATH:$HOME/.local/share/coursier/bin"
 
 [ -f /usr/share/bash-completion/bash_completion ] && source /usr/share/bash-completion/bash_completion
 [ -f /usr/share/fzf/key-bindings.bash ] && source /usr/share/fzf/key-bindings.bash
@@ -33,7 +30,6 @@ lf() {
 }
 
 eval "$(starship init bash)"
-command -v mise >/dev/null && eval "$(mise activate bash --shims)"
 
 # zoxide last: it wraps cd, and later inits win.
 eval "$(zoxide init bash)"
