@@ -574,15 +574,9 @@ fwupdmgr refresh --force && fwupdmgr get-updates
 
 `fwupdmgr update` when one is listed; it reboots into the flash.
 
-## 17. Touchpad: RMI4 over SMBus
+## 17. Touchpad
 
-The touchpad defaults to PS/2, which feels sluggish and misses taps. Switch it to RMI4:
-
-```sh
-echo 'options psmouse synaptics_intertouch=1' | sudo tee /etc/modprobe.d/psmouse.conf
-sudo dracut --force --regenerate-all
-sudo reboot
-```
+Nothing to configure; the sway package covers it.
 
 ## 18. Audit on a rebuilt machine
 
@@ -693,6 +687,5 @@ kernel misbehaves.
 | `/etc/sudoers.d/wg` | §13 |
 | `/etc/iptables/{iptables,ip6tables}.rules` | §14 |
 | `/etc/tlp.conf` (shipped) `/etc/tlp.d/` | §15 |
-| `/etc/modprobe.d/psmouse.conf` | §17 |
 | `/var/log/socklog/*` `/etc/sv/{socklog-unix,nanoklogd}` | `socklog-void`, untouched defaults (§2–3) |
 | everything else under `~` | stow packages in this repo |

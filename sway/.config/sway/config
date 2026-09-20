@@ -42,7 +42,7 @@ input type:touchpad {
     # Press anywhere = left, two-finger press/tap = right, three = middle.
     click_method clickfinger
     tap enabled
-    pointer_accel 0.2
+    pointer_accel 0.4
 }
 
 bindsym $mod+Return exec $term
