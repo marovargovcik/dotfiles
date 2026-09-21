@@ -51,21 +51,22 @@ mkswap -L swap  /dev/nvme0n1p2
 mkfs.btrfs -L void /dev/nvme0n1p3
 
 mount /dev/nvme0n1p3 /mnt
-for s in @ @home @snapshots @var_log; do btrfs subvolume create /mnt/$s; done
+for s in @ @home @snapshots @var_log @var_cache_xbps; do btrfs subvolume create /mnt/$s; done
 umount /mnt
 
 o=compress=zstd:3,noatime,ssd
 mount -o subvol=@,$o /dev/nvme0n1p3 /mnt
-mkdir -p /mnt/{home,.snapshots,var/log,boot/efi}
+mkdir -p /mnt/{home,.snapshots,var/log,var/cache/xbps,boot/efi}
 mount -o subvol=@home,$o      /dev/nvme0n1p3 /mnt/home
 mount -o subvol=@snapshots,$o /dev/nvme0n1p3 /mnt/.snapshots
 mount -o subvol=@var_log,$o   /dev/nvme0n1p3 /mnt/var/log
+mount -o subvol=@var_cache_xbps,$o /dev/nvme0n1p3 /mnt/var/cache/xbps
 mount /dev/nvme0n1p1 /mnt/boot/efi
 swapon /dev/nvme0n1p2
 ```
 
 `@home` and `@var_log` are separate so an OS rollback never touches your files
-or logs.
+or logs. `@var_cache_xbps` is separate so snapshots never hold old packages.
 
 ### 1.2 Base system
 
@@ -111,6 +112,9 @@ umount /.snapshots && rmdir /.snapshots
 snapper -c root create-config /            # writes SNAPPER_CONFIGS="root" to /etc/conf.d/snapper
 btrfs subvolume delete /.snapshots
 mkdir /.snapshots && chmod 750 /.snapshots && mount /.snapshots
+snapper --no-dbus -c root set-config \
+  TIMELINE_LIMIT_HOURLY=3-6 TIMELINE_LIMIT_DAILY=3-7 TIMELINE_LIMIT_WEEKLY=0-2 \
+  TIMELINE_LIMIT_MONTHLY=0-1 TIMELINE_LIMIT_YEARLY=0 NUMBER_LIMIT=2-10
 
 xbps-reconfigure -fa
 exit
@@ -459,7 +463,8 @@ usb-status                                           # {"text":""} when idle
 ## 12. Btrfs: snapshots, rollback, scrub
 
 - `snapper -c root` covers `/` (`@`) only. `/etc/snapper/configs/root` is the
-  create-config default.
+  create-config default plus the limits set in §1.3. They are ranges because
+  `FREE_LIMIT` (keep 20% free) only applies to ranges.
 - Timeline + cleanup run from `/etc/cron.hourly/snapper` → needs `cronie`.
 - `grub-btrfs` (service) watches `/.snapshots`; snapshots appear as a GRUB
   submenu. `/etc/default/grub-btrfs/config` is default.
@@ -631,6 +636,7 @@ state, not hand edits. Anything else is undocumented drift.
 sudo snapper -c root create --description "pre-update"
 sudo xbps-install -Su
 sudo xbps-remove -o          # orphans
+sudo xbps-remove -O          # old packages in the cache
 sudo vkpurge list            # stale kernel files; vkpurge rm all
 sudo grub-mkconfig -o /boot/grub/grub.cfg   # after kernel changes
 fwupdmgr refresh && fwupdmgr get-updates    # firmware; fwupdmgr update to apply
@@ -674,7 +680,7 @@ kernel misbehaves.
 |---|---|
 | `/etc/fstab` | §1.2 (`xgenfstab`; subvol on every btrfs line) |
 | `/etc/hostname` `/etc/rc.conf` `/etc/default/libc-locales` | §1.3 |
-| `/etc/conf.d/snapper` `/etc/snapper/configs/root` | `snapper create-config` (§1.3) |
+| `/etc/conf.d/snapper` `/etc/snapper/configs/root` | `snapper create-config` + `set-config` (§1.3) |
 | `/var/service/*` | §2–3 |
 | `/etc/elogind/logind.conf` `/etc/elogind/sleep.conf` | §6 |
 | `/etc/default/grub` `/etc/dracut.conf.d/resume.conf` | §6 (UUID machine-specific) |
