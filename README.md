@@ -142,7 +142,7 @@ sudo xbps-install -S \
   dbus elogind polkit xfce-polkit gnome-keyring libsecret \
   sway swaylock swayidle foot fuzzel i3status-rust nerd-fonts brightnessctl \
   grim slurp wev clipman xdg-desktop-portal xdg-desktop-portal-wlr xdg-utils \
-  pipewire wireplumber wiremix bluez bluetui libspa-bluetooth \
+  pipewire wireplumber wiremix bluez bluetui libspa-bluetooth lsp-plugins-lv2 \
   iwd impala openresolv wireguard-tools \
   udisks2 ntfs-3g exfatprogs \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
@@ -159,6 +159,7 @@ Packages that look optional and are not:
 | `elogind` | seat, session, lid/power/idle/sleep. No seatd, no turnstile, no acpid |
 | `gnome-keyring` `libsecret` | 1Password's 2FA token surviving a lock |
 | `libspa-bluetooth` | BT headphones (else `br-connection-unknown`) |
+| `lsp-plugins-lv2` | speaker tuning filter chain (§18) |
 | `nss-mdns` | `.local` names resolving (printer) |
 | `ntfs-3g` | udisks2 mounting NTFS sticks |
 | `cronie` | snapper timeline snapshots (`/etc/cron.hourly/snapper`) |
@@ -419,7 +420,7 @@ lpoptions -p Brother_DCP-1610W_series | grep -o "printer-make-and-model='[^']*'"
 
 `cupsd.conf`, `cups-files.conf` and `cups-browsed.conf` are untouched defaults.
 `printers.conf` and `subscriptions.conf` are written by cupsd once the queue
-exists, so they show as MODIFIED in the §18 drift check. Web UI:
+exists, so they show as MODIFIED in the §19 drift check. Web UI:
 `http://localhost:631`.
 
 ## 11. Removable media: udisks2 + fuzzel
@@ -583,7 +584,32 @@ fwupdmgr refresh --force && fwupdmgr get-updates
 
 Nothing to configure; the sway package covers it.
 
-## 18. Audit on a rebuilt machine
+## 18. Speakers: Dolby tuning
+
+Windows applies Lenovo's Dolby tuning to the speakers; Linux plays them raw and
+tinny. `pipewire.conf.d/30-speaker-dolby.{conf,irs}` (stowed in §5) restores it
+as a filter chain on the Speaker sink only. Needs `lsp-plugins-lv2` (§2).
+Keep **Speaker** as the output, not "Dolby-Balanced (speaker filter)".
+
+To regenerate (new machine type or driver update), with
+[speaker-tuning-to-easyeffects](https://github.com/antoinecellerier/speaker-tuning-to-easyeffects):
+
+```sh
+sudo xbps-install -S innoextract lilv
+git clone --depth 1 https://github.com/antoinecellerier/speaker-tuning-to-easyeffects /tmp/st
+cd /tmp/st && uv venv && uv pip install numpy scipy
+.venv/bin/python tools/fetch_driver/get_lenovo_dax_xml.py        # 20W1 → n35a612w.exe
+.venv/bin/python dolby_to_pipewire.py --no-activate --output-dir out
+D=~/dotfiles/pipewire/.config/pipewire/pipewire.conf.d
+cp out/Dolby_Balanced.irs $D/30-speaker-dolby.irs
+sed "s#/tmp/st/out/Dolby_Balanced.irs#$HOME/.config/pipewire/pipewire.conf.d/30-speaker-dolby.irs#" \
+  out/Dolby_Balanced.conf > $D/30-speaker-dolby.conf
+pkill wireplumber; pkill pipewire; swaymsg exec pipewire
+.venv/bin/python dolby_to_pipewire.py --doctor                   # 0 FAIL
+cd && rm -rf /tmp/st && sudo xbps-remove -R innoextract lilv
+```
+
+## 19. Audit on a rebuilt machine
 
 ```sh
 cat /sys/power/mem_sleep                          # s2idle [deep]
@@ -604,6 +630,7 @@ sudo tlp-stat -s | grep -E 'TLP status|Mode'
 fwupdmgr get-devices >/dev/null && echo fwupd-ok
 swaymsg -t get_inputs | jq -r '.[] | select(.type=="touchpad") | .name'   # Synaptics TM3471-030, not SynPS/2
 ls /etc/cron.monthly/btrfs-scrub
+wpctl status | grep -A3 Filters                  # Dolby_Balanced_smart_filter
 ```
 
 Config drift check. `sudo xbps-pkgdb -a` (silent when clean) only checks
@@ -630,7 +657,7 @@ Expected modified set, 19 files: `fstab group passwd subuid subgid sudoers`
 `cups/{printers,subscriptions}.conf` — those last two are cupsd's own runtime
 state, not hand edits. Anything else is undocumented drift.
 
-## 19. Maintenance
+## 20. Maintenance
 
 ```sh
 sudo snapper -c root create --description "pre-update"
