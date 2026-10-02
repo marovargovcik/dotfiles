@@ -21,8 +21,8 @@ State reflected here was verified against the running system on 2026-10-02
 - **Config → Power → Sleep State → Linux** — exposes S3 (`deep`). Without it only
   s2idle exists and the whole power model below degrades.
 - **Config → Storage → SATA Controller → AHCI** if the NVMe is invisible.
-- Boot the **glibc** live ISO (not musl — 1Password and Claude Code are glibc
-  binaries): F12 → USB.
+- Boot the **glibc** live ISO (not musl — 1Password is a glibc binary):
+  F12 → USB.
 
 ## 1. Install (live USB, manual chroot)
 
