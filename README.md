@@ -656,24 +656,14 @@ uv tool upgrade --all
 Snapshot before kernel upgrades; boot the previous snapshot from GRUB if a new
 kernel misbehaves.
 
-## Gotchas
+A D-Bus-activated package (polkit, udisks2, fwupd) installed while dbus is
+running is invisible to the bus until it reloads:
 
-- `svlogtail` never returns → it ends in `tail -F`; for a one-shot read grep
-  `/var/log/socklog/<log>/current` directly. Permission denied → re-login.
-- `loginctl` empty / lid does nothing → `dbus` or `elogind` not running, or sway
-  was launched without `dbus-run-session`.
-- Screen locks but never suspends → missing `idlehint` in the swayidle line (§6).
-- polkit auth dialogs never appear → `xfce-polkit` not exec'd from sway.
-- polkit, udisks2 or fwupd installed while dbus is already running → the bus
-  does not see it until reloaded (for polkit, `sudo sv restart polkitd` after):
-
-  ```sh
-  sudo dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
-    --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ReloadConfig
-  ```
-- 1Password 2FA asks every unlock → one of: PAM lines (§8), keyring daemon exec,
-  `dbus-run-session`.
-- Keyboard backlight: `tpacpi::kbd_backlight`, levels 0–2 (`brightnessctl -d tpacpi::kbd_backlight set 1`).
+```sh
+sudo dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
+  --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ReloadConfig
+sudo sv restart polkitd      # only for polkit
+```
 
 ## Key files
 
