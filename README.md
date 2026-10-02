@@ -251,7 +251,7 @@ chmod +x /tmp/cs && /tmp/cs install cs && rm /tmp/cs
 cs install sbt scalafix scalafmt
 ```
 
-Then run `:MetalsInstall` in nvim. `cs update` updates everything later.
+Then run `:MetalsInstall` in nvim.
 
 ## 6. Sleep and hibernate
 
@@ -652,6 +652,9 @@ sudo xbps-remove -O          # old packages in the cache
 sudo vkpurge list            # stale kernel files; vkpurge rm all
 sudo grub-mkconfig -o /boot/grub/grub.cfg   # after kernel changes
 fwupdmgr refresh && fwupdmgr get-updates    # firmware; fwupdmgr update to apply
+mise upgrade                 # user tools; Claude Code does not update itself
+cs update
+uv tool upgrade --all
 ```
 
 Snapshot before kernel upgrades; boot the previous snapshot from GRUB if a new
