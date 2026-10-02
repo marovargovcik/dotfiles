@@ -148,7 +148,7 @@ sudo xbps-install -S \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
   git git-lfs github-cli mise uv neovim gcc starship bash-completion fzf fd ripgrep zoxide eza bat delta \
-  lazygit lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip
+  lazygit tmux lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip
 ```
 
 Packages that look optional and are not:
@@ -237,7 +237,10 @@ Then finish the user-level tooling:
 ```sh
 mise install                                    # tools in mise/.config/mise/config.toml
 git lfs install
-curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
+uv tool install basedpyright                    # Python language server for nvim
+herdr plugin install ChmaraX/herdr-nvim --yes
+herdr plugin install paulbkim-dev/vim-herdr-navigation --yes
+herdr integration install claude                # agent state in the herdr sidebar
 ```
 
 **What installs what:** xbps, unless one of these applies:
@@ -246,7 +249,7 @@ curl -fsSL https://claude.ai/install.sh | bash  # → ~/.local/bin/claude
   lacks or ships too old.
 - uv — Python versions and Python tools.
 - a language's own installer for its tools — coursier (Scala), raco (Racket).
-- a vendor installer — last resort, as for Claude (§5) and 1Password (§9).
+- a vendor installer — last resort, as for 1Password (§9).
 
 **Scala:** mise handles Java versions, coursier (`cs`) installs the Scala tools.
 
@@ -628,7 +631,7 @@ sudo visudo -c
 sudo iptables -L INPUT -n | head -1               # Chain INPUT (policy DROP)
 sudo tlp-stat -s | grep -E 'TLP status|Mode'
 fwupdmgr get-devices >/dev/null && echo fwupd-ok
-swaymsg -t get_inputs | jq -r '.[] | select(.type=="touchpad") | .name'   # Synaptics TM3471-030, not SynPS/2
+swaymsg -t get_inputs | jq -r '.[] | select(.type=="touchpad") | .name'   # SynPS/2 Synaptics TouchPad
 ls /etc/cron.monthly/btrfs-scrub
 wpctl status | grep -A3 Filters                  # Dolby_Balanced_smart_filter
 ```
