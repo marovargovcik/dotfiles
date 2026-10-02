@@ -215,10 +215,17 @@ What the packages provide, so you know what *not* to write by hand:
 | `bash` | `.bash_profile` starts sway on tty1 inside `dbus-run-session ssh-agent` — the session bus and SSH agent everything else relies on |
 | `sway` | starts the session daemons; §6 relies on its swayidle line, §8 on its keyring line |
 | `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
-| `fuzzel` | launcher lists only `~/.config/fuzzel/applications` (not in git; add an app with `mkdir -p ~/.config/fuzzel/applications && ln -s /usr/share/applications/<app>.desktop ~/.config/fuzzel/applications/`) |
+| `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
 | `xdg` | lowercase `~/downloads` and other user folders |
 | the rest | app configs; comments in the files say why |
+
+Add an app to the launcher:
+
+```sh
+mkdir -p ~/.config/fuzzel/applications
+ln -s /usr/share/applications/<app>.desktop ~/.config/fuzzel/applications/
+```
 
 Log out and back in so the new `.bash_profile` applies, then finish the
 user-level tooling:
