@@ -175,17 +175,15 @@ for s in socklog-unix nanoklogd dbus elogind polkitd iwd chronyd bluetoothd \
 done
 ```
 
-(`dhcpcd` was enabled in §2; `udevd` and `agetty-tty1..6` are already there.)
 `udisks2` is D-Bus activated and deliberately never appears here (§11).
 There is no `snapper-timeline`/`snapper-cleanup` runit service on Void —
-cron does that. Final expected set:
+cron does that. `ls /var/service` once §14–§15 are done:
 
 ```
 agetty-tty1..6 avahi-daemon bluetoothd chronyd cronie cups-browsed cupsd dbus dhcpcd
-elogind grub-btrfs iwd nanoklogd polkitd snapperd socklog-unix udevd
+elogind grub-btrfs ip6tables iptables iwd nanoklogd polkitd snapperd socklog-unix
+tlp udevd
 ```
-
-plus `iptables ip6tables tlp`, enabled in §14–§15 once their files exist.
 
 ## 4. Groups
 
