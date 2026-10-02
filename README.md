@@ -701,7 +701,7 @@ kernel misbehaves.
 | `/etc/fstab` | §1.2 (`xgenfstab`; subvol on every btrfs line) |
 | `/etc/hostname` `/etc/rc.conf` `/etc/default/libc-locales` | §1.3 |
 | `/etc/conf.d/snapper` `/etc/snapper/configs/root` | `snapper create-config` + `set-config` (§1.3) |
-| `/var/service/*` | §2–3 |
+| `/var/service/*` | §2–3, §14–15 |
 | `/etc/elogind/logind.conf` `/etc/elogind/sleep.conf` | §6 |
 | `/etc/default/grub` `/etc/dracut.conf.d/resume.conf` | §6 (UUID machine-specific) |
 | `/etc/iwd/main.conf` `/etc/dhcpcd.conf` `/etc/resolvconf.conf` | §7 |
