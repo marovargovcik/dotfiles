@@ -134,7 +134,7 @@ sudo ln -s /etc/sv/dhcpcd /var/service/
 sudo xbps-install -Su xbps && sudo xbps-install -Su
 ```
 
-Then everything else in one go (this is the complete `xbps-query -m` set):
+Then everything else in one go (with §1.2, this is the complete `xbps-query -m` set):
 
 ```sh
 sudo xbps-install -S \
