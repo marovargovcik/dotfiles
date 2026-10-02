@@ -159,7 +159,7 @@ Packages that look optional and are not:
 | `elogind` | seat, session, lid/power/idle/sleep. No seatd, no turnstile, no acpid |
 | `gnome-keyring` `libsecret` | 1Password's 2FA token surviving a lock |
 | `libspa-bluetooth` | BT headphones (else `br-connection-unknown`) |
-| `lsp-plugins-lv2` | speaker tuning filter chain (§18) |
+| `lsp-plugins-lv2` | speaker tuning filter chain (§17) |
 | `nss-mdns` | `.local` names resolving (printer) |
 | `ntfs-3g` | udisks2 mounting NTFS sticks |
 | `cronie` | snapper timeline snapshots (`/etc/cron.hourly/snapper`) |
@@ -424,7 +424,7 @@ lpoptions -p Brother_DCP-1610W_series | grep -o "printer-make-and-model='[^']*'"
 
 `cupsd.conf`, `cups-files.conf` and `cups-browsed.conf` are untouched defaults.
 `printers.conf` and `subscriptions.conf` are written by cupsd once the queue
-exists, so they show as MODIFIED in the §19 drift check. Web UI:
+exists, so they show as MODIFIED in the §18 drift check. Web UI:
 `http://localhost:631`.
 
 ## 11. Removable media: udisks2 + fuzzel
@@ -584,11 +584,7 @@ fwupdmgr refresh --force && fwupdmgr get-updates
 
 `fwupdmgr update` when one is listed; it reboots into the flash.
 
-## 17. Touchpad
-
-Nothing to configure; the sway package covers it.
-
-## 18. Speakers: Dolby tuning
+## 17. Speakers: Dolby tuning
 
 Windows applies Lenovo's Dolby tuning to the speakers; Linux plays them raw and
 tinny. `pipewire.conf.d/30-speaker-dolby.{conf,irs}` (stowed in §5) restores it
@@ -613,7 +609,7 @@ pkill wireplumber; pkill pipewire; swaymsg exec pipewire
 cd && rm -rf /tmp/st && sudo xbps-remove -R innoextract lilv
 ```
 
-## 19. Audit on a rebuilt machine
+## 18. Audit on a rebuilt machine
 
 ```sh
 cat /sys/power/mem_sleep                          # s2idle [deep]
@@ -661,7 +657,7 @@ Expected modified set, 19 files: `fstab group passwd subuid subgid sudoers`
 `cups/{printers,subscriptions}.conf` — those last two are cupsd's own runtime
 state, not hand edits. Anything else is undocumented drift.
 
-## 20. Maintenance
+## 19. Maintenance
 
 ```sh
 sudo snapper -c root create --description "pre-update"
