@@ -1,5 +1,12 @@
 [tools]
+claude = "latest"
+herdr = "latest"
 java = "oracle-graalvm-25"
 node = "26"
 "npm:typescript-language-server" = "latest"
 tree-sitter = "latest"
+
+[env]
+# Claude Code is updated by `mise upgrade`; its own updater would reinstall
+# itself into ~/.local/bin.
+DISABLE_AUTOUPDATER = "1"

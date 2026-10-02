@@ -31,6 +31,8 @@ lf() {
 
 eval "$(starship init bash)"
 
+command -v mise >/dev/null && eval "$(mise activate bash)"
+
 # zoxide last: it wraps cd, and later inits win.
 eval "$(zoxide init bash)"
 alias cd='z'
