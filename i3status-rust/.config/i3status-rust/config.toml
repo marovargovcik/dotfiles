@@ -57,6 +57,7 @@ block = "battery"
 device = "BAT0"
 format = " $icon $percentage "
 full_format = " $icon $percentage "
+empty_format = " $icon $percentage "
 interval = 30
 
 # Native block: inotify on sysfs, no interval to set. Scroll changes brightness.
