@@ -10,7 +10,7 @@ be typed as-is unless it says "machine-specific".
 x86_64 glibc, runit, dracut, GRUB/UEFI, btrfs + snapper, Sway, elogind, iwd,
 PipeWire. Hostname `t14`, user `maro`, locale `en_US.UTF-8`, TZ `Europe/Bratislava`.
 
-State reflected here was verified against the running system on 2026-09-15
+State reflected here was verified against the running system on 2026-10-02
 (`/etc` diffed against the shipped package files, `/var/service`, `xbps-query -m`).
 
 ---
