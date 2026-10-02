@@ -6,6 +6,7 @@ navigate_workspace_down = "j"
 navigate_workspace_up = "k"
 navigate_pane_down = "ctrl+j"
 navigate_pane_up = "ctrl+k"
+remove_worktree = "prefix+shift+k"
 
 [[keys.command]]
 key = "prefix+e"
