@@ -228,6 +228,7 @@ user-level tooling:
 ```sh
 mise install                                    # tools in mise/.config/mise/config.toml
 git lfs install
+gh auth login                                   # git and nvim use its token
 uv tool install basedpyright                    # Python language server for nvim
 herdr plugin install ChmaraX/herdr-nvim --yes
 herdr plugin install paulbkim-dev/vim-herdr-navigation --yes
