@@ -17,7 +17,16 @@ vim.pack.add({
   'https://github.com/hrsh7th/cmp-nvim-lsp',
   'https://github.com/nvim-tree/nvim-web-devicons',
   'https://github.com/nvim-lualine/lualine.nvim',
+  'https://github.com/ChmaraX/herdr-nvim',
+  'https://github.com/paulbkim-dev/vim-herdr-navigation',
+  'https://github.com/sindrets/diffview.nvim',
+  'https://github.com/nvim-lua/plenary.nvim',  -- octo dependency
+  'https://github.com/pwntester/octo.nvim',
 })
+
+require('herdr-nvim').setup({})
+-- <C-h/j/k/l> across nvim splits and herdr panes; the repo ships it outside runtimepath.
+dofile(vim.pack.get({ 'vim-herdr-navigation' })[1].path .. '/editor/nvim.lua')
 
 -- nvim-treesitter's main branch only installs parsers (no-op when present);
 -- highlighting is Neovim's own and has to be started per filetype.
@@ -146,6 +155,19 @@ vim.keymap.set('n', '<leader>b', '<cmd>FzfLua buffers<cr>',
   { desc = 'Open buffers (currently loaded)' })
 vim.keymap.set('n', '<leader>r', '<cmd>FzfLua oldfiles<cr>',
   { desc = 'Recently opened files (MRU)' })
+
+-- Code review: diffview reads the diff, octo talks to GitHub (auth comes from gh).
+require('octo').setup({ picker = 'fzf-lua' })
+vim.keymap.set('n', '<leader>dd', '<cmd>DiffviewOpen<cr>', { desc = 'Diff: uncommitted changes' })
+-- origin/HEAD is the remote's default branch; three dots diff from the merge base.
+vim.keymap.set('n', '<leader>dp', '<cmd>DiffviewOpen origin/HEAD...HEAD<cr>',
+  { desc = 'Diff: this branch against the default branch (PR view)' })
+vim.keymap.set('n', '<leader>dh', '<cmd>DiffviewFileHistory %<cr>', { desc = 'Diff: history of this file' })
+vim.keymap.set('n', '<leader>dc', '<cmd>DiffviewClose<cr>', { desc = 'Diff: close' })
+vim.keymap.set('n', '<leader>op', '<cmd>Octo pr list<cr>', { desc = 'Octo: pull requests' })
+vim.keymap.set('n', '<leader>os', '<cmd>Octo review start<cr>', { desc = 'Octo: start review' })
+vim.keymap.set('n', '<leader>ou', '<cmd>Octo review resume<cr>', { desc = 'Octo: resume pending review' })
+vim.keymap.set('n', '<leader>oS', '<cmd>Octo review submit<cr>', { desc = 'Octo: submit review' })
 
 -- lf in a floating window, parked on the current file; picked files open here.
 local function open_lf()

@@ -4,9 +4,17 @@
       "rev": "cbc7b02bb99fae35cb42f514762b89b5126651ef",
       "src": "https://github.com/hrsh7th/cmp-nvim-lsp"
     },
+    "diffview.nvim": {
+      "rev": "4516612fe98ff56ae0415a259ff6361a89419b0a",
+      "src": "https://github.com/sindrets/diffview.nvim"
+    },
     "fzf-lua": {
       "rev": "988416cc782dfe28bff3f0da9b8c943b236cd86a",
       "src": "https://github.com/ibhagwan/fzf-lua"
+    },
+    "herdr-nvim": {
+      "rev": "5e849b5377fd409d2fd4be159c9c9fa36c251f7a",
+      "src": "https://github.com/ChmaraX/herdr-nvim"
     },
     "lualine.nvim": {
       "rev": "221ce6b2d999187044529f49da6554a92f740a96",
@@ -31,6 +39,18 @@
     "nvim-web-devicons": {
       "rev": "dfbfaa967a6f7ec50789bead7ef87e336c1fa63c",
       "src": "https://github.com/nvim-tree/nvim-web-devicons"
+    },
+    "octo.nvim": {
+      "rev": "af2411604b51cb4a0f3e2de50b1b7cacc2581c48",
+      "src": "https://github.com/pwntester/octo.nvim"
+    },
+    "plenary.nvim": {
+      "rev": "74b06c6c75e4eeb3108ec01852001636d85a932b",
+      "src": "https://github.com/nvim-lua/plenary.nvim"
+    },
+    "vim-herdr-navigation": {
+      "rev": "79679dacc791f70fc34de8b29a3cf9706c0f5b2f",
+      "src": "https://github.com/paulbkim-dev/vim-herdr-navigation"
     }
   }
 }
