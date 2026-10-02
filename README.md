@@ -232,7 +232,8 @@ What the packages provide, so you know what *not* to write by hand:
 | `xdg` | lowercase `~/downloads` and other user folders |
 | the rest | app configs; comments in the files say why |
 
-Then finish the user-level tooling:
+Log out and back in so the new `.bash_profile` applies, then finish the
+user-level tooling:
 
 ```sh
 mise install                                    # tools in mise/.config/mise/config.toml
