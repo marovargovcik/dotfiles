@@ -318,15 +318,6 @@ sudo sh -c 'echo disk > /sys/power/state'   # raw hibernate → power on → ses
 loginctl suspend-then-hibernate             # the real thing
 ```
 
-### Stages and timing
-
-| At | What happens | Configured by |
-|---|---|---|
-| 5 min idle | swaylock locks the screen | swayidle `timeout 300` |
-| 5 min idle | session reports idle to elogind | swayidle `idlehint 300` |
-| + 10 min | suspend to RAM (S3) | `IdleActionSec=10min` |
-| + 8 h suspended | RTC wakes the machine, writes the image to swap, powers off | `HibernateDelaySec=8h` |
-
 Lid close and the power key go straight to suspend. History:
 `/var/log/socklog/{kernel,secure}/`.
 
