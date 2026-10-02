@@ -212,13 +212,13 @@ changes to apply (`svlogtail` and backlight keys need them).
 ```sh
 git clone https://github.com/marovargovcik/dotfiles ~/dotfiles
 rm ~/.bash_profile ~/.bashrc                        # /etc/skel copies block the symlinks
-mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config
+mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/herdr
 cd ~/dotfiles && stow */
 ```
 
 **Create the real directories first** — stow symlinks any missing directory
-whole, and your private keys and binaries would then live inside the repo.
-`chmod 700 ~/.ssh` after creating it.
+whole, and your private keys, binaries and herdr's sockets and logs would then
+live inside the repo. `chmod 700 ~/.ssh` after creating it.
 
 What the packages provide, so you know what *not* to write by hand:
 
