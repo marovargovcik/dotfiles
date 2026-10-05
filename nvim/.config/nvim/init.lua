@@ -1,6 +1,7 @@
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.scrolloff = 8
+vim.cmd.colorscheme('slate')
 vim.opt.completeopt = { 'menuone', 'noselect', 'popup' }
 -- The default statusline plus Metals' progress and status messages.
 vim.opt.statusline = "%<%f %h%w%m%r %{get(g:, 'metals_status', '')}%=%-14.(%l,%c%V%) %P"
