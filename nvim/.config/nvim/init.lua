@@ -1,7 +1,9 @@
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.scrolloff = 8
-vim.cmd.colorscheme('slate')
+-- Colors LSP semantic tokens like their treesitter captures, so the two layers
+-- do not visibly swap while a server recomputes its tokens after a save.
+vim.cmd.colorscheme('catppuccin')
 vim.opt.completeopt = { 'menuone', 'noselect', 'popup' }
 -- The default statusline plus Metals' progress and status messages.
 vim.opt.statusline = "%<%f %h%w%m%r %{get(g:, 'metals_status', '')}%=%-14.(%l,%c%V%) %P"
