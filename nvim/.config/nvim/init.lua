@@ -83,9 +83,10 @@ vim.api.nvim_create_autocmd('LspAttach', {
 })
 
 -- Only the project formatters format on save; ts_ls and basedpyright never do.
+-- Metals runs the project's scalafmt and needs a .scalafmt.conf to do so.
 vim.api.nvim_create_autocmd('BufWritePre', {
   callback = function(ev)
-    for _, name in ipairs({ 'ruff', 'oxfmt' }) do
+    for _, name in ipairs({ 'ruff', 'oxfmt', 'metals' }) do
       if #vim.lsp.get_clients({ bufnr = ev.buf, name = name }) > 0 then
         vim.lsp.buf.format({ bufnr = ev.buf, name = name, timeout_ms = 2000 })
       end
