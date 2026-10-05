@@ -7,39 +7,5 @@ navigate_workspace_up = "k"
 navigate_pane_down = "ctrl+j"
 navigate_pane_up = "ctrl+k"
 remove_worktree = "prefix+shift+k"
-
-[[keys.command]]
-key = "prefix+e"
-type = "plugin_action"
-command = "chmarax.herdr-nvim.toggle"
-description = "nvim sidebar"
-
-[[keys.command]]
-key = "prefix+o"
-type = "plugin_action"
-command = "chmarax.herdr-nvim.pick-file"
-description = "open file from agent output"
-
-[[keys.command]]
-key = "ctrl+h"
-type = "plugin_action"
-command = "vim-herdr-navigation.left"
-description = "navigate left (vim/herdr)"
-
-[[keys.command]]
-key = "ctrl+j"
-type = "plugin_action"
-command = "vim-herdr-navigation.down"
-description = "navigate down (vim/herdr)"
-
-[[keys.command]]
-key = "ctrl+k"
-type = "plugin_action"
-command = "vim-herdr-navigation.up"
-description = "navigate up (vim/herdr)"
-
-[[keys.command]]
-key = "ctrl+l"
-type = "plugin_action"
-command = "vim-herdr-navigation.right"
-description = "navigate right (vim/herdr)"
+next_agent = "prefix+a"
+previous_agent = "prefix+shift+a"
