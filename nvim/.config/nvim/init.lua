@@ -5,8 +5,7 @@ vim.opt.scrolloff = 8
 -- do not visibly swap while a server recomputes its tokens after a save.
 vim.cmd.colorscheme('catppuccin')
 vim.opt.completeopt = { 'menuone', 'noselect', 'popup' }
--- The default statusline plus Metals' progress and status messages.
-vim.opt.statusline = "%<%f %h%w%m%r %{get(g:, 'metals_status', '')}%=%-14.(%l,%c%V%) %P"
+vim.opt.statusline = "%!v:lua.require'statusline'.render()"
 
 -- cw/cW as dw/yw, not Vi's special-cased ce/cE behavior (:help cpo-_).
 vim.opt.cpoptions:remove('_')
@@ -62,7 +61,10 @@ vim.lsp.enable({ 'ts_ls', 'oxlint', 'oxfmt', 'ruff', 'basedpyright' })
 -- nvim-metals attaches its own LSP client; do not add metals to lspconfig.
 local metals = require('metals')
 local metals_config = metals.bare_config()
-metals_config.init_options.statusBarProvider = 'on'  -- feeds vim.g.metals_status
+-- 'on' has Metals send its build server, build target and status messages as
+-- metals/status rather than as popups; long-running work arrives as LSP progress.
+metals_config.init_options.statusBarProvider = 'on'
+metals_config.handlers = { ['metals/status'] = require('statusline').on_metals_status }
 
 vim.api.nvim_create_autocmd('FileType', {
   pattern = { 'scala', 'sbt', 'java' },
