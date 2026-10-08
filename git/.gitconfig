@@ -15,6 +15,8 @@
     conflictstyle = diff3
 [init]
 	defaultBranch = main
+[push]
+	autoSetupRemote = true
 [user]
 	email = vargovcik.marek@gmail.com
 	name = Marek Vargovčík
