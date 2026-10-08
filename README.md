@@ -200,14 +200,13 @@ changes to apply (`svlogtail` and backlight keys need them).
 ```sh
 git clone https://github.com/marovargovcik/dotfiles ~/dotfiles
 rm ~/.bash_profile ~/.bashrc                        # /etc/skel copies block the symlinks
-mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/herdr ~/.claude
+mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/herdr
 cd ~/dotfiles && stow */
 ```
 
 **Create the real directories first** — stow symlinks any missing directory
-whole, and your private keys, binaries, herdr's sockets and logs and Claude
-Code's credentials and history would then live inside the repo. `chmod 700
-~/.ssh` after creating it.
+whole, and your private keys, binaries and herdr's sockets and logs would then
+live inside the repo. `chmod 700 ~/.ssh` after creating it.
 
 What the packages provide, so you know what *not* to write by hand:
 
@@ -218,7 +217,6 @@ What the packages provide, so you know what *not* to write by hand:
 | `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
-| `claude` | `~/.claude/settings.json` only — never credentials or history |
 | `xdg` | lowercase `~/downloads` and other user folders |
 | the rest | app configs; comments in the files say why |
 
@@ -238,6 +236,11 @@ git lfs install
 gh auth login                                   # git uses its token
 uv tool install basedpyright                    # Python language server for nvim
 herdr integration install claude                # agent state in the herdr sidebar
+
+# Claude Code preferences, merged into ~/.claude/settings.json. Not a stow
+# package: Claude Code and herdr also write machine-specific state to that file.
+f=~/.claude/settings.json; mkdir -p ~/.claude; [ -s "$f" ] || echo '{}' > "$f"
+jq '. + {theme: "dark", editorMode: "vim", disableAgentView: true}' "$f" > "$f.new" && mv "$f.new" "$f"
 ```
 
 **What installs what:** xbps, unless one of these applies:

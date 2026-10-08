@@ -14,7 +14,3 @@ bin/**
 !bin/.local/bin/wg-status
 
 fuzzel/.config/fuzzel/applications/
-
-claude/**
-!claude/.claude/
-!claude/.claude/settings.json
