@@ -140,7 +140,7 @@ Then everything else in one go (with §1.2, this is the complete `xbps-query -m`
 sudo xbps-install -S \
   linux7.2 mesa-dri intel-video-accel \
   dbus elogind polkit xfce-polkit gnome-keyring libsecret \
-  sway swaylock swayidle foot fuzzel i3status-rust nerd-fonts brightnessctl \
+  sway swaylock swayidle foot fuzzel mako libnotify i3status-rust nerd-fonts brightnessctl \
   grim slurp wev clipman xdg-desktop-portal xdg-desktop-portal-wlr xdg-utils \
   pipewire wireplumber wiremix bluez bluetui libspa-bluetooth lsp-plugins-lv2 \
   iwd impala openresolv wireguard-tools \
