@@ -9,6 +9,7 @@ local BAR_WIDTH = 10
 -- within milliseconds, and would only make the statusline flicker.
 local PROGRESS_DELAY_MS = 200
 local LEVEL_HL = { warn = 'DiagnosticWarn', error = 'DiagnosticError' }
+local SEPARATOR = '%#NonText# │ %*'
 
 ---@type table<integer, table<string|integer, { title: string?, message: string?, percentage: integer?, since: integer }>>
 local progress = {}
@@ -108,20 +109,29 @@ local function metals_component(clients)
   for _, client in ipairs(clients) do
     if client.name == 'metals' then
       local by_type = metals[client.id] or {}
+      -- Metals reports long-running work twice: as LSP progress and as its own
+      -- transient message. The progress component already shows it.
+      local busy = next(progress[client.id] or {}) ~= nil
       -- A transient message, the build target of the focused file, the build server.
       for _, type in ipairs({ 'metals', 'module', 'bsp' }) do
         local status = by_type[type]
         local text = status and vim.trim(status.text) or ''
-        if text ~= '' then
-          parts[#parts + 1] = highlight(LEVEL_HL[status.level], escape(text))
-        elseif type == 'bsp' then
+        local level_hl = status and LEVEL_HL[status.level]
+        if type == 'bsp' and text == '' then
           -- Metals hides the status rather than saying so when it has no connection.
           parts[#parts + 1] = highlight('DiagnosticWarn', 'no build server')
+        elseif text == '' or (type == 'metals' and busy) then
+          -- nothing to show
+        elseif type == 'bsp' then
+          -- A connected build server is the normal state; only trouble is worth the space.
+          if level_hl then parts[#parts + 1] = highlight(level_hl, escape(text)) end
+        else
+          parts[#parts + 1] = highlight(level_hl or (type == 'module' and 'NonText'), escape(text))
         end
       end
     end
   end
-  return table.concat(parts, ' · ')
+  return table.concat(parts, SEPARATOR)
 end
 
 function M.render()
@@ -140,7 +150,7 @@ function M.render()
   }) do
     if component ~= '' then right[#right + 1] = component end
   end
-  return file .. '%=' .. table.concat(right, '  ')
+  return file .. '%=' .. table.concat(right, SEPARATOR)
 end
 
 return M
