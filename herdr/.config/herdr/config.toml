@@ -9,3 +9,16 @@ navigate_pane_up = "ctrl+k"
 remove_worktree = "prefix+shift+k"
 next_agent = "prefix+a"
 previous_agent = "prefix+shift+a"
+
+[ui]
+# sidebar as an attention queue: blocked/done agents float to the top
+agent_panel_sort = "priority"
+status_indicators = "symbols"
+
+[ui.sidebar.spaces]
+rows = [["state_icon", "workspace"], ["branch", "git_status"]]
+
+# desktop notification when a background agent finishes or needs input;
+# prefix+o jumps to it
+[ui.toast]
+delivery = "system"
