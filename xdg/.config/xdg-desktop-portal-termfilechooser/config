@@ -1,0 +1,7 @@
+[filechooser]
+cmd=lf-wrapper.sh
+default_dir=$HOME
+; the app id is what the sway config floats
+env=TERMCMD=foot --app-id filechooser
+open_mode=suggested
+save_mode=suggested

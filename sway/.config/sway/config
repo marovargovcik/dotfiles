@@ -52,6 +52,8 @@ bindsym $mod+Shift+r reload
 bindsym $mod+Shift+e exec swaynag -t warning -m 'You pressed the exit shortcut. Do you really want to exit sway? This will end your Wayland session.' -B 'Yes, exit sway' 'swaymsg exit'
 bindsym --release Mod1+Shift_L exec swaymsg input type:keyboard xkb_switch_layout next
 floating_modifier $mod normal
+# File dialogs: lf in foot, started by the desktop portal (xdg package).
+for_window [app_id="filechooser"] floating enable, resize set 1100 700
 
 bindsym $mod+$left focus left
 bindsym $mod+$down focus down
@@ -121,12 +123,16 @@ bindsym --locked XF86MonBrightnessUp exec brightnessctl set 5%+
 bindsym Print exec grim
 bindsym $mod+c exec clipman pick --tool=CUSTOM --tool-args="fuzzel -d"
 
+# The session bus starts before sway; services it launches (desktop portal, screen sharing) need the display.
+exec dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 exec pipewire
 # Secret service for 1Password; also needs the PAM lines (README §8) and dbus-run-session.
 exec gnome-keyring-daemon --start --daemonize --components=secrets
 exec wl-paste -t text --watch clipman store
 exec /usr/libexec/xfce-polkit
 exec mako
+# Warns at 15% and 5%, hibernates at 2%; nothing else acts on a low battery while the machine is in use.
+exec batsignal -b -D 'loginctl hibernate'
 
 # Lock at 300s and report the session idle to elogind; elogind owns suspend.
 # Without `idlehint` a wayland session never reports idle and IdleAction never fires.

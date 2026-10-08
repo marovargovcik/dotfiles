@@ -140,8 +140,9 @@ Then everything else in one go (with §1.2, this is the complete `xbps-query -m`
 sudo xbps-install -S \
   linux7.2 mesa-dri intel-video-accel \
   dbus elogind polkit xfce-polkit gnome-keyring libsecret \
-  sway swaylock swayidle foot fuzzel mako libnotify i3status-rust nerd-fonts brightnessctl \
-  grim slurp wev clipman xdg-desktop-portal xdg-desktop-portal-wlr xdg-utils \
+  sway swaylock swayidle foot fuzzel mako libnotify batsignal i3status-rust brightnessctl \
+  nerd-fonts noto-fonts-emoji gsettings-desktop-schemas \
+  grim slurp wev clipman xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-termfilechooser xdg-utils \
   pipewire wireplumber wiremix bluez bluetui libspa-bluetooth lsp-plugins-lv2 \
   iwd impala openresolv wireguard-tools \
   udisks2 ntfs-3g exfatprogs \
@@ -165,6 +166,8 @@ Packages that look optional and are not:
 | `cronie` | snapper timeline snapshots (`/etc/cron.hourly/snapper`) |
 | `socklog-void` | any syslog at all; Void ships no logger |
 | `gcc` | nvim-treesitter compiling its parsers |
+| `libnotify` | `notify-send`, which herdr and batsignal use to reach mako |
+| `gsettings-desktop-schemas` | the dark preference below; without it `gsettings` has nothing to set |
 
 ## 3. Services
 
@@ -217,7 +220,7 @@ What the packages provide, so you know what *not* to write by hand:
 | `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
-| `xdg` | lowercase `~/downloads` and other user folders |
+| `xdg` | lowercase `~/downloads` and other user folders; file dialogs that open lf instead of a GTK window |
 | the rest | app configs; comments in the files say why |
 
 Add an app to the launcher:
@@ -236,6 +239,12 @@ git lfs install
 gh auth login                                   # git uses its token
 uv tool install basedpyright                    # Python language server for nvim
 herdr integration install claude                # agent state in the herdr sidebar
+
+# Apps and websites that ask get "dark".
+gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+
+# Firefox keeps its own file dialog unless told to ask the portal:
+# about:config → widget.use-xdg-desktop-portal.file-picker = 1
 
 # Claude Code preferences, merged into ~/.claude/settings.json. Not a stow
 # package: Claude Code and herdr also write machine-specific state to that file.
