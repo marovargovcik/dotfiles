@@ -15,6 +15,8 @@ vim.pack.add({
   'https://github.com/neovim/nvim-lspconfig',
   'https://github.com/scalameta/nvim-metals',
   'https://github.com/ibhagwan/fzf-lua',
+  'https://github.com/sindrets/diffview.nvim',
+  'https://github.com/nvim-tree/nvim-web-devicons',  -- diffview's file icons
 })
 
 -- nvim-treesitter's main branch only installs parsers (no-op when present);
@@ -107,3 +109,10 @@ vim.keymap.set('n', '<leader>r', '<cmd>FzfLua oldfiles<cr>',
   { desc = 'Recently opened files (MRU)' })
 vim.keymap.set('n', '<leader>q', '<cmd>FzfLua diagnostics_workspace<cr>',
   { desc = 'Diagnostics (project-wide, fuzzy)' })
+
+vim.keymap.set('n', '<leader>dd', '<cmd>DiffviewOpen<cr>', { desc = 'Diff: uncommitted changes' })
+-- origin/HEAD is the remote's default branch; three dots diff from the merge base.
+vim.keymap.set('n', '<leader>dp', '<cmd>DiffviewOpen origin/HEAD...HEAD<cr>',
+  { desc = 'Diff: this branch against the default branch (PR view)' })
+vim.keymap.set('n', '<leader>dh', '<cmd>DiffviewFileHistory %<cr>', { desc = 'Diff: history of this file' })
+vim.keymap.set('n', '<leader>dc', '<cmd>DiffviewClose<cr>', { desc = 'Diff: close' })
