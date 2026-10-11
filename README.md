@@ -140,7 +140,7 @@ Then everything else in one go (with §1.2, this is the complete `xbps-query -m`
 sudo xbps-install -S \
   linux7.2 mesa-dri intel-video-accel \
   dbus elogind polkit xfce-polkit gnome-keyring libsecret \
-  sway swaylock swayidle foot fuzzel mako libnotify batsignal i3status-rust brightnessctl \
+  sway swaylock swayidle fprintd foot fuzzel mako libnotify batsignal i3status-rust brightnessctl \
   nerd-fonts noto-fonts-emoji gsettings-desktop-schemas \
   grim slurp wev clipman xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-termfilechooser xdg-utils \
   pipewire wireplumber wiremix bluez bluetui libspa-bluetooth lsp-plugins-lv2 \
@@ -167,6 +167,7 @@ Packages that look optional and are not:
 | `socklog-void` | any syslog at all; Void ships no logger |
 | `gcc` | nvim-treesitter compiling its parsers |
 | `libnotify` | `notify-send`, which herdr and batsignal use to reach mako |
+| `fprintd` | fingerprint unlock in `lock` (§6) |
 | `gsettings-desktop-schemas` | the dark preference below; without it `gsettings` has nothing to set |
 
 ## 3. Services
@@ -178,7 +179,8 @@ for s in socklog-unix nanoklogd dbus elogind polkitd iwd chronyd bluetoothd \
 done
 ```
 
-`udisks2` is D-Bus activated and deliberately never appears here (§11).
+`udisks2` (§11) and `fprintd` (§6) are D-Bus activated and deliberately never
+appear here.
 There is no `snapper-timeline`/`snapper-cleanup` runit service on Void —
 cron does that. `ls /var/service` once §14–§15 are done:
 
@@ -217,7 +219,7 @@ What the packages provide, so you know what *not* to write by hand:
 |---|---|
 | `bash` | `.bash_profile` starts sway on tty1 inside `dbus-run-session ssh-agent` — the session bus and SSH agent everything else relies on |
 | `sway` | starts the session daemons; §6 relies on its swayidle line, §8 on its keyring line |
-| `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
+| `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo; `lock` is the screen locker (§6) |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
 | `xdg` | lowercase `~/downloads` and other user folders; file dialogs that open lf instead of a GTK window |
@@ -272,9 +274,9 @@ Then run `:MetalsInstall` in nvim.
 
 ## 6. Sleep and hibernate
 
-elogind decides when (lid, power key, idle); swayidle locks the screen and
-reports idle to elogind (`idlehint`, in the sway config); the power menu runs
-`loginctl suspend-then-hibernate`. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
+elogind decides when (lid, power key, idle); swayidle locks the screen with
+`lock` and reports idle to elogind (`idlehint`, in the sway config); the power
+menu runs `loginctl suspend-then-hibernate`. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
 
 **`/etc/elogind/logind.conf`** (shipped file is all comments; append):
 
@@ -337,6 +339,19 @@ loginctl suspend-then-hibernate             # the real thing
 
 Lid close and the power key go straight to suspend. History:
 `/var/log/socklog/{kernel,secure}/`.
+
+**Fingerprint unlock.** `lock` (§5) runs swaylock and unlocks on the password
+or a touch of the reader; a finger it does not recognise blinks the keyboard
+backlight. Enroll once:
+
+```sh
+fprintd-enroll                              # right index finger by default
+fprintd-list maro
+```
+
+`/etc/pam.d/swaylock` stays as shipped. swaylock only calls PAM after Enter, so
+`pam_fprintd` there would need a keypress before every touch; the script
+verifies the finger itself.
 
 ## 7. Networking: iwd (Wi-Fi) + dhcpcd (wired) + resolvconf
 

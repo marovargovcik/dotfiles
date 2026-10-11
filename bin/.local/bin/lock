@@ -1,0 +1,33 @@
+#!/bin/sh
+# Lock the screen; unlock with the password or a touch of the fingerprint reader.
+pgrep -x swaylock >/dev/null && exit 0
+swaylock -f "$@" || exit
+
+# The locked screen cannot show a rejected finger, so blink the keyboard backlight.
+flash() {
+    led=tpacpi::kbd_backlight
+    was=$(brightnessctl -d "$led" get)
+    [ "$was" -eq 0 ] && blink=100% || blink=0
+    brightnessctl -q -d "$led" set "$blink"
+    sleep 0.3
+    brightnessctl -q -d "$led" set "$was"
+}
+
+# swaylock has no fingerprint support but unlocks on SIGUSR1.
+(
+    while pgrep -x swaylock >/dev/null; do
+        case $(fprintd-verify 2>/dev/null) in
+            *verify-match*)    pkill -USR1 -x swaylock ;;
+            *verify-no-match*) flash ;;
+        esac
+        sleep 1
+    done
+) &
+
+# Release the reader when the password was typed instead.
+(
+    while pgrep -x swaylock >/dev/null; do sleep 1; done
+    # Wait out a verify the loop above may have just started.
+    sleep 1
+    pkill -x fprintd-verify
+) &
