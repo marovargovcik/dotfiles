@@ -136,9 +136,11 @@ exec batsignal -b -D 'loginctl hibernate'
 
 # Lock at 300s and report the session idle to elogind; elogind owns suspend.
 # Without `idlehint` a wayland session never reports idle and IdleAction never fires.
+# The `lock` event is elogind's lock signal: the power key and `loginctl lock-session`.
 exec swayidle -w \
     timeout 300 lock \
     idlehint 300 \
+    lock lock \
     before-sleep lock \
     after-resume 'swaymsg "output * power on"'
 

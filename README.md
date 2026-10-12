@@ -170,6 +170,20 @@ Packages that look optional and are not:
 | `fprintd` | fingerprint unlock in `lock` (§6) |
 | `gsettings-desktop-schemas` | the dark preference below; without it `gsettings` has nothing to set |
 
+**Font rendering.** fontconfig ships grayscale antialiasing with slight hinting,
+which is soft on a 1080p panel. Switch to RGB subpixel rendering and full
+hinting, then restart apps:
+
+```sh
+cd /etc/fonts/conf.d
+sudo rm 10-sub-pixel-none.conf 10-hinting-slight.conf
+sudo ln -s /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf .
+sudo ln -s /usr/share/fontconfig/conf.avail/10-hinting-full.conf .
+fc-cache -f
+```
+
+GTK4 apps ignore the subpixel setting and stay grayscale.
+
 ## 3. Services
 
 ```sh
@@ -274,9 +288,10 @@ Then run `:MetalsInstall` in nvim.
 
 ## 6. Sleep and hibernate
 
-elogind decides when (lid, power key, idle); swayidle locks the screen with
-`lock` and reports idle to elogind (`idlehint`, in the sway config); the power
-menu runs `loginctl suspend-then-hibernate`. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
+elogind decides when (lid, idle); swayidle locks the screen with `lock` and
+reports idle to elogind (`idlehint`, in the sway config); the power menu runs
+`loginctl suspend-then-hibernate`. The power key only locks: elogind sends the
+session a lock signal and swayidle runs `lock` on it. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
 
 **`/etc/elogind/logind.conf`** (shipped file is all comments; append):
 
@@ -284,10 +299,10 @@ menu runs `loginctl suspend-then-hibernate`. Inhibit: `elogind-inhibit --what=id
 [Login]
 HandleLidSwitch=suspend-then-hibernate
 HandleLidSwitchExternalPower=suspend-then-hibernate
-HandlePowerKey=suspend-then-hibernate
+HandlePowerKey=lock
 HandleSuspendKey=suspend-then-hibernate
 IdleAction=suspend-then-hibernate
-IdleActionSec=10min
+IdleActionSec=5min
 ```
 
 **`/etc/elogind/sleep.conf`**:
@@ -337,7 +352,8 @@ sudo sh -c 'echo disk > /sys/power/state'   # raw hibernate → power on → ses
 loginctl suspend-then-hibernate             # the real thing
 ```
 
-Lid close and the power key go straight to suspend. History:
+Lid close goes straight to suspend; the power key locks, and the idle action
+suspends 10 minutes after the last input. History:
 `/var/log/socklog/{kernel,secure}/`.
 
 **Fingerprint unlock.** `lock` (§5) runs swaylock and unlocks on the password
@@ -352,6 +368,18 @@ fprintd-list maro
 `/etc/pam.d/swaylock` stays as shipped. swaylock only calls PAM after Enter, so
 `pam_fprintd` there would need a keypress before every touch; the script
 verifies the finger itself.
+
+**`/etc/elogind/system-sleep/50-fprintd`** (executable). Without it the touch
+stops unlocking after some resumes:
+
+```sh
+#!/bin/sh
+# The reader re-enumerates on resume; a fprintd left over from before can keep a dead
+# claim, and SIGTERM has left such a daemon running. A fprintd-verify waiting on the
+# killed daemon never returns, so kill it too and let `lock` start a fresh one.
+[ "$1" = post ] && { pkill -x fprintd-verify; pkill -KILL -x fprintd; }
+exit 0
+```
 
 ## 7. Networking: iwd (Wi-Fi) + dhcpcd (wired) + resolvconf
 
@@ -639,6 +667,7 @@ fwupdmgr get-devices >/dev/null && echo fwupd-ok
 swaymsg -t get_inputs | jq -r '.[] | select(.type=="touchpad") | .name'   # SynPS/2 Synaptics TouchPad
 ls /etc/cron.monthly/btrfs-scrub
 wpctl status | grep -A3 Filters                  # Dolby_Balanced_smart_filter
+fc-match -v sans | grep -E 'hintstyle|rgba'       # hintstyle: 3, rgba: 1
 ```
 
 Config drift check. `sudo xbps-pkgdb -a` (silent when clean) only checks
@@ -700,7 +729,8 @@ sudo sv restart polkitd      # only for polkit
 | `/etc/hostname` `/etc/rc.conf` `/etc/default/libc-locales` | §1.3 |
 | `/etc/conf.d/snapper` `/etc/snapper/configs/root` | `snapper create-config` + `set-config` (§1.3) |
 | `/var/service/*` | §2–3, §14–15 |
-| `/etc/elogind/logind.conf` `/etc/elogind/sleep.conf` | §6 |
+| `/etc/fonts/conf.d/10-sub-pixel-rgb.conf` `/etc/fonts/conf.d/10-hinting-full.conf` | §2 (symlinks) |
+| `/etc/elogind/logind.conf` `/etc/elogind/sleep.conf` `/etc/elogind/system-sleep/50-fprintd` | §6 |
 | `/etc/default/grub` `/etc/dracut.conf.d/resume.conf` | §6 (UUID machine-specific) |
 | `/etc/iwd/main.conf` `/etc/dhcpcd.conf` `/etc/resolvconf.conf` | §7 |
 | `/etc/pam.d/system-login` | §8 |

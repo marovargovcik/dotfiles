@@ -13,21 +13,26 @@ flash() {
     brightnessctl -q -d "$led" set "$was"
 }
 
-# swaylock has no fingerprint support but unlocks on SIGUSR1.
+# swaylock has no fingerprint support but unlocks on SIGUSR1. Follow this swaylock by
+# PID so that a loop left over from an earlier lock cannot latch onto the next one.
+pid=$(pgrep -n -x swaylock) || exit
 (
-    while pgrep -x swaylock >/dev/null; do
-        case $(fprintd-verify 2>/dev/null) in
-            *verify-match*)    pkill -USR1 -x swaylock ;;
+    while kill -0 "$pid" 2>/dev/null; do
+        # A verify whose daemon died never returns; the timeout keeps the loop alive.
+        case $(timeout 60 fprintd-verify 2>/dev/null) in
+            *verify-match*)    kill -USR1 "$pid" ;;
             *verify-no-match*) flash ;;
         esac
         sleep 1
     done
 ) &
+loop=$!
 
 # Release the reader when the password was typed instead.
 (
-    while pgrep -x swaylock >/dev/null; do sleep 1; done
+    while kill -0 "$pid" 2>/dev/null; do sleep 1; done
     # Wait out a verify the loop above may have just started.
     sleep 1
-    pkill -x fprintd-verify
+    # The command substitution execs timeout, which passes the signal on to the verify.
+    pkill -P "$loop" -x timeout
 ) &
