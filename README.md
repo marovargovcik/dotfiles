@@ -167,7 +167,7 @@ Packages that look optional and are not:
 | `socklog-void` | any syslog at all; Void ships no logger |
 | `gcc` | nvim-treesitter compiling its parsers |
 | `libnotify` | `notify-send`, which herdr and batsignal use to reach mako |
-| `fprintd` | fingerprint unlock in `lock` (§6) |
+| `fprintd` | fingerprint unlock in swaylock (§6) |
 | `gsettings-desktop-schemas` | the dark preference below; without it `gsettings` has nothing to set |
 
 **Font rendering.** fontconfig ships grayscale antialiasing with slight hinting,
@@ -233,7 +233,7 @@ What the packages provide, so you know what *not* to write by hand:
 |---|---|
 | `bash` | `.bash_profile` starts sway on tty1 inside `dbus-run-session ssh-agent` — the session bus and SSH agent everything else relies on |
 | `sway` | starts the session daemons; §6 relies on its swayidle line, §8 on its keyring line |
-| `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo; `lock` is the screen locker (§6) |
+| `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
 | `xdg` | lowercase `~/downloads` and other user folders; file dialogs that open lf instead of a GTK window |
@@ -288,10 +288,10 @@ Then run `:MetalsInstall` in nvim.
 
 ## 6. Sleep and hibernate
 
-elogind decides when (lid, idle); swayidle locks the screen with `lock` and
+elogind decides when (lid, idle); swayidle locks the screen with swaylock and
 reports idle to elogind (`idlehint`, in the sway config); the power menu runs
 `loginctl suspend-then-hibernate`. The power key only locks: elogind sends the
-session a lock signal and swayidle runs `lock` on it. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
+session a lock signal and swayidle runs swaylock on it. Inhibit: `elogind-inhibit --what=idle:sleep --why=… cmd`.
 
 **`/etc/elogind/logind.conf`** (shipped file is all comments; append):
 
@@ -356,30 +356,25 @@ Lid close goes straight to suspend; the power key locks, and the idle action
 suspends 10 minutes after the last input. History:
 `/var/log/socklog/{kernel,secure}/`.
 
-**Fingerprint unlock.** `lock` (§5) runs swaylock and unlocks on the password
-or a touch of the reader; a finger it does not recognise blinks the keyboard
-backlight. Enroll once:
+**Fingerprint unlock.** At the lock screen press Enter on an empty prompt,
+then touch the reader; a typed password still works. Enroll once:
 
 ```sh
 fprintd-enroll                              # right index finger by default
 fprintd-list maro
 ```
 
-`/etc/pam.d/swaylock` stays as shipped. swaylock only calls PAM after Enter, so
-`pam_fprintd` there would need a keypress before every touch; the script
-verifies the finger itself.
+**`/etc/pam.d/swaylock`** (replaces the shipped `auth include login`):
 
-**`/etc/elogind/system-sleep/50-fprintd`** (executable). Without it the touch
-stops unlocking after some resumes:
-
-```sh
-#!/bin/sh
-# The reader re-enumerates on resume; a fprintd left over from before can keep a dead
-# claim, and SIGTERM has left such a daemon running. A fprintd-verify waiting on the
-# killed daemon never returns, so kill it too and let `lock` start a fresh one.
-[ "$1" = post ] && { pkill -x fprintd-verify; pkill -KILL -x fprintd; }
-exit 0
 ```
+auth  [success=1 default=ignore]  pam_unix.so          try_first_pass nullok
+auth  required                    pam_fprintd.so       timeout=10
+auth  optional                    pam_gnome_keyring.so
+```
+
+The password is checked first and skips the reader when it is right. With
+`pam_fprintd` first, every typed password would wait on the reader as well.
+After a wrong password, touch the reader or wait out the 10 seconds.
 
 ## 7. Networking: iwd (Wi-Fi) + dhcpcd (wired) + resolvconf
 
@@ -730,7 +725,7 @@ sudo sv restart polkitd      # only for polkit
 | `/etc/conf.d/snapper` `/etc/snapper/configs/root` | `snapper create-config` + `set-config` (§1.3) |
 | `/var/service/*` | §2–3, §14–15 |
 | `/etc/fonts/conf.d/10-sub-pixel-rgb.conf` `/etc/fonts/conf.d/10-hinting-full.conf` | §2 (symlinks) |
-| `/etc/elogind/logind.conf` `/etc/elogind/sleep.conf` `/etc/elogind/system-sleep/50-fprintd` | §6 |
+| `/etc/elogind/logind.conf` `/etc/elogind/sleep.conf` `/etc/pam.d/swaylock` | §6 |
 | `/etc/default/grub` `/etc/dracut.conf.d/resume.conf` | §6 (UUID machine-specific) |
 | `/etc/iwd/main.conf` `/etc/dhcpcd.conf` `/etc/resolvconf.conf` | §7 |
 | `/etc/pam.d/system-login` | §8 |
