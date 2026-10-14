@@ -149,8 +149,13 @@ sudo xbps-install -S \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
   git git-lfs github-cli mise uv neovim gcc starship bash-completion fzf fd ripgrep zoxide eza bat delta \
-  lazygit tmux lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip
+  lazygit tmux lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip \
+  podman podman-compose podman-tui
 ```
+
+Containers run under rootless Podman, not Docker: membership in the `docker`
+group is root-equivalent. Podman has no daemon and no runit service; sway
+starts its API socket (§5).
 
 Packages that look optional and are not:
 
@@ -214,25 +219,33 @@ sudo usermod -aG socklog maro      # read /var/log/socklog without sudo
 Final: `wheel audio video input storage lpadmin socklog`. Re-login for group
 changes to apply (`svlogtail` and backlight keys need them).
 
+Rootless Podman needs subordinate IDs. `useradd` (§1.3) writes them; if
+`grep maro /etc/subuid /etc/subgid` prints nothing:
+
+```sh
+sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 maro
+```
+
 ## 5. Dotfiles (stow)
 
 ```sh
 git clone https://github.com/marovargovcik/dotfiles ~/dotfiles
 rm ~/.bash_profile ~/.bashrc                        # /etc/skel copies block the symlinks
-mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/herdr
+mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/herdr ~/.config/containers
 cd ~/dotfiles && stow */
 ```
 
 **Create the real directories first** — stow symlinks any missing directory
-whole, and your private keys, binaries and herdr's sockets and logs would then
-live inside the repo. `chmod 700 ~/.ssh` after creating it.
+whole, and your private keys, binaries, herdr's sockets and logs, and Podman's
+connection list would then live inside the repo. `chmod 700 ~/.ssh` after creating it.
 
 What the packages provide, so you know what *not* to write by hand:
 
 | Package | Provides |
 |---|---|
 | `bash` | `.bash_profile` starts sway on tty1 inside `dbus-run-session ssh-agent` — the session bus and SSH agent everything else relies on |
-| `sway` | starts the session daemons; §6 relies on its swayidle line, §8 on its keyring line |
+| `sway` | starts the session daemons, including the Podman API socket at `$XDG_RUNTIME_DIR/podman/podman.sock`; §6 relies on its swayidle line, §8 on its keyring line |
+| `containers` | short image names like `postgres` resolve to Docker Hub |
 | `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
@@ -663,6 +676,8 @@ swaymsg -t get_inputs | jq -r '.[] | select(.type=="touchpad") | .name'   # SynP
 ls /etc/cron.monthly/btrfs-scrub
 wpctl status | grep -A3 Filters                  # Dolby_Balanced_smart_filter
 fc-match -v sans | grep -E 'hintstyle|rgba'       # hintstyle: 3, rgba: 1
+podman info --format '{{.Host.Security.Rootless}}'   # true
+ls $XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
 Config drift check. `sudo xbps-pkgdb -a` (silent when clean) only checks

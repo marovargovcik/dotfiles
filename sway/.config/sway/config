@@ -133,6 +133,8 @@ exec /usr/libexec/xfce-polkit
 exec mako
 # Warns at 15% and 5%, hibernates at 2%; nothing else acts on a low battery while the machine is in use.
 exec batsignal -b -D 'loginctl hibernate'
+# Podman API socket for podman-tui and docker clients; nothing socket-activates it without systemd.
+exec podman system service --time=0
 
 # Lock at 300s and report the session idle to elogind; elogind owns suspend.
 # Without `idlehint` a wayland session never reports idle and IdleAction never fires.
