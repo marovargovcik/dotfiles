@@ -1,0 +1,35 @@
+#!/bin/bash
+# fuzzel menu for caffeine: hold off sleep for a while, or until turned off.
+# An elogind sleep inhibitor blocks the idle suspend; the screen still locks.
+# Closing the lid still suspends, and so do power-menu and batsignal: logind
+# lets the inhibitor's own user through.
+#
+# $XDG_RUNTIME_DIR/caffeine holds the inhibitor's pid and when it ends
+# (0 = never); caffeine-status reads it.
+
+state="$XDG_RUNTIME_DIR/caffeine"
+
+choice=$(printf '%s\n' off indefinitely '5 min' '10 min' '15 min' '30 min' '60 min' |
+         fuzzel -d --no-exit-on-keyboard-focus-loss)
+case "$choice" in
+    '')           exit 0 ;;
+    off)          secs= ;;
+    indefinitely) secs=infinity ;;
+    *)            secs=$(( ${choice% min} * 60 )) ;;
+esac
+
+# A new choice replaces the running one.
+read -r pid _ 2>/dev/null <"$state" && kill -- "-$pid" 2>/dev/null
+rm -f "$state"
+
+if [ -n "$secs" ]; then
+    # setsid gives it its own process group, so off kills the sleep along with
+    # the inhibitor. When the time runs out it refreshes the bar itself.
+    setsid sh -c 'elogind-inhibit --what=sleep --who=caffeine --why=caffeine sleep "$1"
+                  pkill -RTMIN+9 -x i3status-rs' sh "$secs" </dev/null >/dev/null 2>&1 &
+    until=0
+    [ "$secs" = infinity ] || until=$(( EPOCHSECONDS + secs ))
+    echo "$! $until" >"$state"
+fi
+
+pkill -RTMIN+9 -x i3status-rs

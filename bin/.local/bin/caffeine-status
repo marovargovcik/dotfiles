@@ -1,0 +1,13 @@
+#!/bin/bash
+# Bar block for caffeine (see caffeine-menu): a full cup, Good, while sleep is
+# held off, with the minutes left when there is a limit; an empty cup otherwise.
+
+state="$XDG_RUNTIME_DIR/caffeine"
+
+if read -r pid until 2>/dev/null <"$state" && kill -0 "$pid" 2>/dev/null; then
+    left=
+    [ "$until" -eq 0 ] || left=" $(( (until - EPOCHSECONDS + 59) / 60 ))m"
+    printf '{"text":"\U000F0176%s","state":"Good"}\n' "$left"
+else
+    printf '{"text":"\U000F06CA"}\n'
+fi
