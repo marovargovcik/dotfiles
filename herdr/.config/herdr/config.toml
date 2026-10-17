@@ -10,8 +10,8 @@ next_agent = "prefix+a"
 previous_agent = "prefix+shift+a"
 
 # herdr-task (herdr package's ~/.local/bin/herdr-task) in place of herdr's own
-# worktree keys: new starts claude, archive logs the task so restore can bring
-# it back, sweep archives the ones whose PR merged or closed.
+# worktree keys: new starts claude, archive picks tasks from every repo and logs
+# them so restore can bring them back.
 # On failure the popup stays open until enter, so the error can be read.
 [[keys.command]]
 key = "prefix+t"
@@ -25,17 +25,9 @@ height = 6
 key = "prefix+shift+k"
 type = "popup"
 command = "herdr-task archive || read -r _"
-description = "archive task (branch stays)"
-width = 80
-height = 6
-
-[[keys.command]]
-key = "prefix+shift+s"
-type = "popup"
-command = "herdr-task sweep || read -r _"
-description = "archive tasks with merged/closed PRs"
-width = 80
-height = 12
+description = "archive tasks (branches stay)"
+width = "90%"
+height = "50%"
 
 [[keys.command]]
 key = "prefix+shift+o"

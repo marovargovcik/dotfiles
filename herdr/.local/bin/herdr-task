@@ -1,11 +1,10 @@
 #!/bin/bash
 # One herdr worktree workspace per task, with Claude Code running in it.
 #
-#   herdr-task new [branch] [base]   worktree + workspace for the repo in $PWD, starts claude
-#   herdr-task archive [workspace]   removes the worktree (the branch stays) and logs it
-#   herdr-task archived              lists archived tasks
-#   herdr-task restore               picks one with fzf: same path, same branch, claude --resume
-#   herdr-task sweep                 archives tasks whose PR merged or closed, unless claude is busy
+#   herdr-task new [branch] [base]     worktree + workspace for the repo in $PWD, starts claude
+#   herdr-task archive [workspace...]  picks tasks with fzf, removes their worktrees (branches stay), logs them
+#   herdr-task archived                lists archived tasks
+#   herdr-task restore                 picks one with fzf: same path, same branch, claude --resume
 #
 # The worktree comes back at the same path, so `claude --resume` finds the
 # conversation: Claude Code keys transcripts by directory. herdr-claude-title
@@ -29,24 +28,49 @@ session_in() {
 }
 
 # Removes a worktree workspace's worktree (the branch stays) and logs it for
-# restore. With a second argument, asks first when there's a terminal.
+# restore.
 archive() {
-    local ws=$1 ask=${2:-} list wt path label ok
+    local ws=$1 list wt path label
     list=$(herdr worktree list --workspace "$ws")
     wt=$(jq -c --arg ws "$ws" '.result.worktrees[] | select(.open_workspace_id == $ws)' <<<"$list")
     [ "$(jq -r '.is_linked_worktree' <<<"$wt" 2>/dev/null)" = true ] || { echo "herdr-task: $ws is not a worktree workspace" >&2; return 1; }
     path=$(jq -r '.path' <<<"$wt")
     label=$(herdr workspace get "$ws" | jq -r '.result.workspace.label')
-    if [ "$ask" ] && [ -t 0 ]; then
-        read -rp "archive \"$label\" ($(jq -r '.branch' <<<"$wt"))? [y/N] " ok
-        [ "$ok" = y ] || return 0
-    fi
     mkdir -p "${log%/*}"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F)" "$(jq -r '.result.source.repo_root' <<<"$list")" \
         "$(jq -r '.branch' <<<"$wt")" "$path" "$(session_in "$path")" "${label//$'\t'/ }" >>"$log"
     # Logged first: removing the workspace this runs in may end this script.
     # herdr refuses a dirty worktree; then the entry goes back out.
     herdr worktree remove --workspace "$ws" >/dev/null || { sed -i '$d' "$log"; return 1; }
+}
+
+# What a worktree has that archiving would set aside, for archive's picker.
+status_of() {
+    local path=$1 agent=$2 pr base ahead n remote out tags=()
+    cd "$path"
+    pr=$(gh pr view --json state -q .state 2>/dev/null) || pr=
+    base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=main
+    ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || ahead=0
+    n=$(git status --porcelain | wc -l)
+    remote=refs/remotes/origin/$(git branch --show-current)
+    case $agent in working | blocked) tags+=("claude $agent") ;; esac
+    [ "$n" -gt 0 ] && tags+=("$n uncommitted")
+    [ -n "$pr" ] && tags+=("pr ${pr,,}")
+    case $pr in MERGED | CLOSED) ;; *)
+        if [ "$ahead" -gt 0 ]; then
+            tags+=("$ahead ahead")
+            if ! git rev-parse -q --verify "$remote" >/dev/null; then
+                tags+=("not pushed")
+            elif [ "$(git rev-list --count "$remote..HEAD")" -gt 0 ]; then
+                tags+=("$(git rev-list --count "$remote..HEAD") unpushed")
+            fi
+        elif [ "$n" -eq 0 ] && [ -z "$pr" ]; then
+            tags+=(untouched)
+        fi
+        ;;
+    esac
+    printf -v out ' · %s' "${tags[@]}"
+    echo "${out:3}"
 }
 
 # Starts restore's picker on the repo of $PWD, if it's in one; ctrl+u clears it.
@@ -66,31 +90,32 @@ new)
     herdr pane run "$(jq -r '.result.root_pane.pane_id' <<<"$out")" claude >/dev/null
     ;;
 archive)
-    ws=${2:-${HERDR_WORKSPACE_ID:-${HERDR_ACTIVE_WORKSPACE_ID:-}}}
-    [ -n "$ws" ] || die "not in herdr; pass a workspace id"
-    archive "$ws" ask
-    ;;
-sweep)
-    # Workspace id, path and label of each worktree task whose agent isn't
-    # working or waiting on a question. The focused workspace goes last:
-    # removing the workspace this runs in may end this script.
-    tasks=$(herdr workspace list | jq -r --arg cur "${HERDR_ACTIVE_WORKSPACE_ID:-}" '
-        .result.workspaces | sort_by(.workspace_id == $cur)[]
-        | select(.worktree.is_linked_worktree and (.agent_status | IN("working", "blocked") | not))
-        | [.workspace_id, .worktree.checkout_path, .label] | @tsv')
-    found=()
-    while IFS=$'\t' read -r ws path label; do
-        [ -n "$ws" ] || continue
-        state=$(cd "$path" && gh pr view --json state -q .state 2>/dev/null) || continue
-        case $state in MERGED | CLOSED) found+=("$ws"); printf '%-7s %s\n' "${state,,}" "$label" ;; esac
-    done <<<"$tasks"
-    [ ${#found[@]} -gt 0 ] || { echo "nothing to sweep"; exit 0; }
-    if [ -t 0 ]; then
-        read -rp "archive ${#found[@]}? [y/N] " ok
-        [ "$ok" = y ] || exit 0
+    shift
+    if [ $# -eq 0 ]; then
+        # Every worktree task, statuses fetched in parallel (gh is slow).
+        tasks=$(herdr workspace list | jq -r '.result.workspaces[] | select(.worktree.is_linked_worktree)
+            | [.workspace_id, .worktree.checkout_path, .agent_status, .worktree.repo_name, .label] | @tsv')
+        [ -n "$tasks" ] || die "no worktree tasks"
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        i=0
+        while IFS=$'\t' read -r ws path agent repo label; do
+            i=$((i + 1))
+            { printf '%s\t%-12s %-34.34s %-28s ' "$ws" "$repo" "$label" "$(git -C "$path" branch --show-current)"
+              status_of "$path" "$agent"; } >"$tmp/$(printf %03d $i)" &
+        done <<<"$tasks"
+        wait
+        mapfile -t picked < <(cat "$tmp"/* | fzf --multi --with-nth=2.. --delimiter='\t' --bind=ctrl-a:toggle-all \
+            --header='tab: select  ctrl-a: all  enter: archive' | cut -f1)
+        set -- "${picked[@]}"
     fi
-    rc=0
-    for ws in "${found[@]}"; do archive "$ws" || rc=1; done
+    # The focused workspace goes last: removing the workspace this runs in may
+    # end this script.
+    rc=0 last=
+    for ws; do
+        if [ "$ws" = "${HERDR_ACTIVE_WORKSPACE_ID:-}" ]; then last=$ws; else archive "$ws" || rc=1; fi
+    done
+    [ -z "$last" ] || archive "$last" || rc=1
     exit $rc
     ;;
 archived)
@@ -107,7 +132,7 @@ restore)
     sed -i "${n}d" "$log"
     ;;
 *)
-    sed -n '3,8s/^# \{0,1\}//p' "$0" >&2
+    sed -n '3,7s/^# \{0,1\}//p' "$0" >&2
     exit 2
     ;;
 esac
