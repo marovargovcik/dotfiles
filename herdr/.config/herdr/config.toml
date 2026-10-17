@@ -9,27 +9,39 @@ navigate_pane_up = "ctrl+k"
 next_agent = "prefix+a"
 previous_agent = "prefix+shift+a"
 
-# task (herdr package's ~/.local/bin/task) in place of herdr's own worktree
-# keys: new starts claude, archive logs the task so restore can bring it back.
+# herdr-task (herdr package's ~/.local/bin/herdr-task) in place of herdr's own
+# worktree keys: new starts claude, archive logs the task so restore can bring
+# it back, sweep archives the ones whose PR merged or closed.
 # On failure the popup stays open until enter, so the error can be read.
 [[keys.command]]
 key = "prefix+t"
 type = "popup"
-command = "task new || read -r _"
+command = "herdr-task new || read -r _"
+description = "new task: worktree + claude"
 width = 60
 height = 6
 
 [[keys.command]]
 key = "prefix+shift+k"
 type = "popup"
-command = "task archive || read -r _"
+command = "herdr-task archive || read -r _"
+description = "archive task (branch stays)"
 width = 80
 height = 6
 
 [[keys.command]]
+key = "prefix+shift+s"
+type = "popup"
+command = "herdr-task sweep || read -r _"
+description = "archive tasks with merged/closed PRs"
+width = 80
+height = 12
+
+[[keys.command]]
 key = "prefix+shift+o"
 type = "popup"
-command = "task restore || read -r _"
+command = "herdr-task restore || read -r _"
+description = "restore archived task"
 width = "80%"
 height = "50%"
 

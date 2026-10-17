@@ -249,7 +249,7 @@ What the packages provide, so you know what *not* to write by hand:
 | `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
-| `herdr` | `task`: one worktree workspace per Claude Code task, titled after the conversation, archived and restored with it |
+| `herdr` | `herdr-task`: one worktree workspace per Claude Code task, titled after the conversation, archived and restored with it |
 | `xdg` | lowercase `~/downloads` and other user folders; file dialogs that open lf instead of a GTK window |
 | the rest | app configs; comments in the files say why |
 
