@@ -1,5 +1,5 @@
 [filechooser]
-cmd=lf-wrapper.sh
+cmd=lf-fullscreen-wrapper.sh
 default_dir=$HOME
 ; the app id is what the sway config floats
 env=TERMCMD=foot --app-id filechooser
