@@ -249,6 +249,7 @@ What the packages provide, so you know what *not* to write by hand:
 | `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
+| `herdr` | `task`: one worktree workspace per Claude Code task, titled after the conversation, archived and restored with it |
 | `xdg` | lowercase `~/downloads` and other user folders; file dialogs that open lf instead of a GTK window |
 | the rest | app configs; comments in the files say why |
 
@@ -278,7 +279,9 @@ gsettings set org.gnome.desktop.interface color-scheme prefer-dark
 # Claude Code preferences, merged into ~/.claude/settings.json. Not a stow
 # package: Claude Code and herdr also write machine-specific state to that file.
 f=~/.claude/settings.json; mkdir -p ~/.claude; [ -s "$f" ] || echo '{}' > "$f"
-jq '. + {theme: "dark", editorMode: "vim", disableAgentView: true}' "$f" > "$f.new" && mv "$f.new" "$f"
+jq '. + {theme: "dark", editorMode: "vim", disableAgentView: true}
+    | .hooks.Stop = ((.hooks.Stop // []) | map(select(.hooks[0].command != "herdr-claude-title"))
+        + [{hooks: [{type: "command", command: "herdr-claude-title", timeout: 10}]}])' "$f" > "$f.new" && mv "$f.new" "$f"
 ```
 
 **What installs what:** xbps, unless one of these applies:

@@ -1,0 +1,28 @@
+#!/bin/bash
+# Claude Code Stop hook: names the herdr workspace after the conversation, like
+# the desktop app's session titles. Only worktree workspaces are renamed, so the
+# repo's main workspace keeps its name.
+#
+# Claude Code writes an ai-title into the transcript on its own; /rename adds a
+# custom-title, which wins.
+
+[ "${HERDR_ENV:-}" = 1 ] && [ -n "${HERDR_WORKSPACE_ID:-}" ] || exit 0
+
+transcript=$(jq -r '.transcript_path // empty')
+[ -f "$transcript" ] || exit 0
+
+title=$(grep -hE '"type":"(custom|ai)-title"' "$transcript" |
+        jq -rs '(map(select(.type == "custom-title")) | last | .customTitle)
+                // (map(select(.type == "ai-title")) | last | .aiTitle) // empty')
+[ -n "$title" ] || exit 0
+
+ws=$HERDR_WORKSPACE_ID
+label=$(herdr workspace get "$ws" | jq -r '.result.workspace.label')
+[ "$label" = "$title" ] && exit 0
+
+herdr worktree list --workspace "$ws" |
+    jq -e --arg ws "$ws" '.result.worktrees[] | select(.open_workspace_id == $ws and .is_linked_worktree)' \
+    >/dev/null || exit 0
+
+herdr workspace rename "$ws" "$title" >/dev/null
+exit 0
