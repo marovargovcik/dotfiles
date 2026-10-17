@@ -1,0 +1,3 @@
+# Notifications go to the Acer, matched by connector name only (mako can't
+# match by identifier). If DP-3 isn't connected, they follow the focused output.
+output=DP-3
