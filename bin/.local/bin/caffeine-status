@@ -4,7 +4,9 @@
 
 state="$XDG_RUNTIME_DIR/caffeine"
 
-if read -r pid until 2>/dev/null <"$state" && kill -0 "$pid" 2>/dev/null; then
+# The cmdline check skips a pid that has since been reused by something else.
+if read -r pid until 2>/dev/null <"$state" && grep -qs caffeine "/proc/$pid/cmdline" &&
+   { [ "$until" -eq 0 ] || [ "$until" -gt "$EPOCHSECONDS" ]; }; then
     left=
     [ "$until" -eq 0 ] || left=" $(( (until - EPOCHSECONDS + 59) / 60 ))m"
     printf '{"text":"\U000F0176%s","state":"Good"}\n' "$left"

@@ -18,17 +18,25 @@ case "$choice" in
     *)            secs=$(( ${choice% min} * 60 )) ;;
 esac
 
-# A new choice replaces the running one.
-read -r pid _ 2>/dev/null <"$state" && kill -- "-$pid" 2>/dev/null
+# A new choice replaces the running one. The cmdline check skips a pid that
+# has since been reused by something else.
+read -r pid _ 2>/dev/null <"$state" && grep -qs caffeine "/proc/$pid/cmdline" &&
+    kill -- "-$pid" 2>/dev/null
 rm -f "$state"
 
 if [ -n "$secs" ]; then
-    # setsid gives it its own process group, so off kills the sleep along with
-    # the inhibitor. When the time runs out it refreshes the bar itself.
-    setsid sh -c 'elogind-inhibit --what=sleep --who=caffeine --why=caffeine sleep "$1"
-                  pkill -RTMIN+9 -x i3status-rs' sh "$secs" </dev/null >/dev/null 2>&1 &
     until=0
     [ "$secs" = infinity ] || until=$(( EPOCHSECONDS + secs ))
+    # setsid gives it its own process group, so off kills the wait along with
+    # the inhibitor. The wait checks the wall clock at least once a minute
+    # because sleep stops counting while suspended. When the time runs out it
+    # refreshes the bar itself.
+    setsid sh -c 'elogind-inhibit --what=sleep --who=caffeine --why=caffeine sh -c '\''
+                      [ "$1" -eq 0 ] && exec sleep infinity
+                      while left=$(( $1 - $(date +%s) )); [ "$left" -gt 0 ]; do
+                          sleep $(( left < 60 ? left : 60 ))
+                      done'\'' sh "$1"
+                  pkill -RTMIN+9 -x i3status-rs' sh "$until" </dev/null >/dev/null 2>&1 &
     echo "$! $until" >"$state"
 fi
 
