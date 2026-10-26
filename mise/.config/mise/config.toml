@@ -1,10 +1,15 @@
 [tools]
 claude = "latest"
 herdr = "latest"
-java = "oracle-graalvm-25"
+java = "zulu-25"
+lefthook = "2.2.2"
 node = "26"
 "npm:typescript-language-server" = "latest"
 tree-sitter = "latest"
+shfmt = "3.14.1"
+"aqua:rvben/rumdl" = "0.3.0"
+gitleaks = "latest"
+yamlfmt = "latest"
 
 [env]
 # Claude Code is updated by `mise upgrade`; its own updater would reinstall
