@@ -232,13 +232,14 @@ sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 maro
 ```sh
 git clone https://github.com/marovargovcik/dotfiles ~/dotfiles
 rm ~/.bash_profile ~/.bashrc                        # /etc/skel copies block the symlinks
-mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/herdr ~/.config/containers
+mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/herdr ~/.config/containers ~/.claude
 cd ~/dotfiles && stow */
 ```
 
 **Create the real directories first** — stow symlinks any missing directory
-whole, and your private keys, binaries, herdr's sockets and logs, and Podman's
-connection list would then live inside the repo. `chmod 700 ~/.ssh` after creating it.
+whole, and your private keys, binaries, herdr's sockets and logs, Podman's
+connection list and Claude Code's sessions and credentials would then live inside the
+repo. `chmod 700 ~/.ssh` after creating it.
 
 What the packages provide, so you know what *not* to write by hand:
 
@@ -252,6 +253,7 @@ What the packages provide, so you know what *not* to write by hand:
 | `ssh` | `~/.ssh/config` only — never a key |
 | `herdr` | `herdr-task`: one worktree workspace per Claude Code task, titled after the conversation, archived and restored with it |
 | `xdg` | lowercase `~/downloads` and other user folders; file dialogs that open lf instead of a GTK window |
+| `claude` | `~/.claude/CLAUDE.md` only, Claude Code's global instructions (herdr tasks) |
 | the rest | app configs; comments in the files say why |
 
 Add an app to the launcher:
