@@ -10,7 +10,7 @@ be typed as-is unless it says "machine-specific".
 x86_64 glibc, runit, dracut, GRUB/UEFI, btrfs + snapper, Sway, elogind, iwd,
 PipeWire. Hostname `t14`, user `maro`, locale `en_US.UTF-8`, TZ `Europe/Bratislava`.
 
-State reflected here was verified against the running system on 2026-10-02
+State reflected here was verified against the running system on 2026-10-26
 (`/etc` diffed against the shipped package files, `/var/service`, `xbps-query -m`).
 
 ---
@@ -150,7 +150,7 @@ sudo xbps-install -S \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
   git git-lfs github-cli mise uv neovim gcc starship bash-completion fzf fd ripgrep zoxide eza bat delta \
   lazygit tmux lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip \
-  podman podman-compose podman-tui
+  podman podman-compose podman-tui aardvark-dns
 ```
 
 Containers run under rootless Podman, not Docker: membership in the `docker`
@@ -174,6 +174,7 @@ Packages that look optional and are not:
 | `libnotify` | `notify-send`, which herdr and batsignal use to reach mako |
 | `fprintd` | fingerprint unlock in swaylock (§6) |
 | `gsettings-desktop-schemas` | the dark preference below; without it `gsettings` has nothing to set |
+| `aardvark-dns` | containers in a `podman compose` network reaching each other by name |
 
 **Font rendering.** fontconfig ships grayscale antialiasing with slight hinting,
 which is soft on a 1080p panel. Switch to RGB subpixel rendering and full
@@ -700,9 +701,9 @@ EOF
 ```
 
 (Shipped content of any file: `xbps-query --cat=/etc/<file> <pkg>`.)
-Expected modified set, 19 files: `fstab group passwd subuid subgid sudoers`
+Expected modified set, 20 files: `fstab group passwd subuid subgid sudoers`
 (install), `dhcpcd.conf`, `elogind/{logind,sleep}.conf`, `default/grub`,
-`default/libc-locales`, `resolvconf.conf`, `pam.d/system-login`, `hostname`,
+`default/libc-locales`, `resolvconf.conf`, `pam.d/{system-login,swaylock}`, `hostname`,
 `rc.conf`, `conf.d/snapper`, `snapper-rollback.conf`, and
 `cups/{printers,subscriptions}.conf` — those last two are cupsd's own runtime
 state, not hand edits. Anything else is undocumented drift.
