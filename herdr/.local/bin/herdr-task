@@ -1,7 +1,8 @@
 #!/bin/bash
 # One herdr worktree workspace per task, with Claude Code running in it.
 #
-#   herdr-task new [branch] [base]     worktree + workspace for the repo in $PWD, starts claude
+#   herdr-task new [-p prompt] [branch] [base]
+#                                      worktree + workspace for the repo in $PWD, starts claude on prompt
 #   herdr-task archive [workspace...]  picks tasks with fzf, removes their worktrees (branches stay), logs them
 #   herdr-task archived                lists archived tasks
 #   herdr-task restore                 picks one with fzf: same path, same branch, claude --resume
@@ -83,11 +84,22 @@ repo_query() {
 
 case "${1:-}" in
 new)
-    branch=${2:-}
+    shift
+    prompt=
+    while getopts p: opt; do
+        case $opt in p) prompt=$OPTARG ;; *) exit 2 ;; esac
+    done
+    shift $((OPTIND - 1))
+    branch=${1:-}
     [ -n "$branch" ] || read -rp 'branch: ' branch
     [ -n "$branch" ] || exit 0
-    out=$(herdr worktree create --cwd "$PWD" --branch "$branch" ${3:+--base "$3"} --focus)
-    herdr pane run "$(jq -r '.result.root_pane.pane_id' <<<"$out")" claude >/dev/null
+    # From the main checkout: herdr refuses to branch a worktree off a linked one.
+    main=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || die "not in a git repo"
+    out=$(herdr worktree create --cwd "${main%/.git}" --branch "$branch" ${2:+--base "$2"} --focus)
+    pane=$(jq -r '.result.root_pane.pane_id' <<<"$out")
+    herdr pane run "$pane" "claude${prompt:+ $(printf %q "$prompt")}" >/dev/null
+    # For whoever handed the task off, to follow it with herdr agent get/read.
+    echo "$pane"
     ;;
 archive)
     shift
@@ -132,7 +144,7 @@ restore)
     sed -i "${n}d" "$log"
     ;;
 *)
-    sed -n '3,7s/^# \{0,1\}//p' "$0" >&2
+    sed -n '3,8s/^# \{0,1\}//p' "$0" >&2
     exit 2
     ;;
 esac
