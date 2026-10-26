@@ -10,6 +10,7 @@ shfmt = "3.14.1"
 "aqua:rvben/rumdl" = "0.3.0"
 gitleaks = "latest"
 yamlfmt = "latest"
+"aqua:quarylabs/sqruff" = "latest"
 
 [env]
 # Claude Code is updated by `mise upgrade`; its own updater would reinstall
