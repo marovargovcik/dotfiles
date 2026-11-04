@@ -5,7 +5,13 @@
 #                                      worktree + workspace for the repo in $PWD, starts claude on prompt
 #   herdr-task archive [workspace...]  picks tasks with fzf, removes their worktrees (branches stay), logs them
 #   herdr-task archived                lists archived tasks
-#   herdr-task restore                 picks one with fzf: same path, same branch, claude --resume
+#   herdr-task restore [-p prompt] [key]
+#                                      the newest archived task whose branch has key (or one picked with fzf):
+#                                      same path, same branch, claude --resume on prompt
+#   herdr-task places <ticket|path|repo>
+#                                      where a request belongs, most specific first: this, task, archived,
+#                                      closed (worktree with no pane), session, shell
+#   herdr-task send <pane> <hand-off>  prompts the pane's Claude, or starts one there; refuses a blocked pane
 #
 # The worktree comes back at the same path, so `claude --resume` finds the
 # conversation: Claude Code keys transcripts by directory. herdr-claude-title
@@ -18,6 +24,12 @@
 set -euo pipefail
 
 log=${XDG_STATE_HOME:-$HOME/.local/state}/herdr-task/archive.tsv
+trash_root=${XDG_CACHE_HOME:-$HOME/.cache}/herdr-task/trash
+
+# A new task takes focus only when a person started it from a terminal; one an
+# agent starts opens in the background.
+focus=
+[ -t 0 ] && focus=--focus
 
 die() { echo "herdr-task: $*" >&2; exit 1; }
 
@@ -40,9 +52,29 @@ archive() {
     mkdir -p "${log%/*}"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F)" "$(jq -r '.result.source.repo_root' <<<"$list")" \
         "$(jq -r '.branch' <<<"$wt")" "$path" "$(session_in "$path")" "${label//$'\t'/ }" >>"$log"
+    # Deleting node_modules (~400k files) took most of archive's time: it's
+    # moved aside on the same volume, and deleted in the background once the
+    # worktree is gone.
+    local trash=
+    if [ -d "$path/node_modules" ]; then
+        trash=$trash_root/$ws-$$
+        mkdir -p "$trash" && mv "$path/node_modules" "$trash/" || trash=
+    fi
     # Logged first: removing the workspace this runs in may end this script.
     # herdr refuses a dirty worktree; then the entry goes back out.
-    herdr worktree remove --workspace "$ws" >/dev/null || { sed -i '$d' "$log"; return 1; }
+    if ! herdr worktree remove --workspace "$ws" >/dev/null; then
+        sed -i '$d' "$log"
+        [ -z "$trash" ] || { mv "$trash/node_modules" "$path/" && rmdir "$trash"; }
+        return 1
+    fi
+    [ -z "$trash" ] || empty_trash "$trash"
+}
+
+# Deletes what archive set aside, detached so it outlives the popup, along with
+# anything an earlier run left behind (older than an hour).
+empty_trash() {
+    nohup sh -c 'rm -rf "$1"; find "$2" -mindepth 1 -maxdepth 1 -mmin +60 -exec rm -rf {} +' \
+        _ "$1" "$trash_root" >/dev/null 2>&1 &
 }
 
 # What a worktree has that archiving would set aside, for archive's picker.
@@ -52,7 +84,7 @@ status_of() {
     pr=$(gh pr view --json state -q .state 2>/dev/null) || pr=
     base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=main
     ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || ahead=0
-    n=$(git status --porcelain | wc -l)
+    n=$(($(git status --porcelain | wc -l)))  # BSD wc pads with spaces
     remote=refs/remotes/origin/$(git branch --show-current)
     case $agent in working | blocked) tags+=("claude $agent") ;; esac
     [ "$n" -gt 0 ] && tags+=("$n uncommitted")
@@ -74,6 +106,34 @@ status_of() {
     echo "${out:3}"
 }
 
+# Every worktree task: workspace, path, agent status, repo, label.
+tasks() {
+    herdr workspace list | jq -r '.result.workspaces[] | select(.worktree.is_linked_worktree)
+        | [.workspace_id, .worktree.checkout_path, .agent_status, .worktree.repo_name, .label] | @tsv'
+}
+
+# archive's picker rows, one per task; with --status, statuses fetched in
+# parallel and printed in task order.
+rows() {
+    local tmp i=0 ws path agent repo label branch
+    tmp=$(mktemp -d)
+    while IFS=$'\t' read -r ws path agent repo label; do
+        i=$((i + 1))
+        # Long branches are cut so the status after them stays in view.
+        branch=$(git -C "$path" branch --show-current)
+        [ ${#branch} -le 28 ] || branch="${branch:0:27}…"
+        { printf '%s\t%-12s %-34.34s %s%*s ' "$ws" "$repo" "$label" "$branch" $((28 - ${#branch})) ''
+          if [ "${1:-}" = --status ]; then status_of "$path" "$agent"; else echo; fi
+        } >"$tmp/$(printf %03d $i)" &
+    done < <(tasks)
+    wait
+    cat "$tmp"/* 2>/dev/null
+    rm -rf "$tmp"
+}
+
+# Names the popup this runs in (herdr shows the terminal title), when there is one.
+title() { [ -t 2 ] && printf '\e]0;%s\a' "$1" >&2 || true; }
+
 # Starts restore's picker on the repo of $PWD, if it's in one; ctrl+u clears it.
 repo_query() {
     local git
@@ -82,7 +142,71 @@ repo_query() {
     printf "'%s " "${git##*/}"
 }
 
+# Every pane: id, agent status (unknown: no agent running), cwd.
+panes() {
+    herdr pane list | jq -r '.result.panes[] | [.pane_id, .agent_status, .cwd] | @tsv'
+}
+
+# The places a ticket key, path or repo name could go to, one per line:
+# kind, pane or branch, status, path. Kinds rank most specific first.
+places() {
+    local q=$1 key= root= pane status cwd base
+    if [[ $q =~ ^[A-Za-z]+-[0-9]+$ ]]; then
+        key=${q,,}
+    elif [ -e "$q" ]; then
+        root=$(git -C "$q" rev-parse --show-toplevel 2>/dev/null) || root=$(cd "$q" && pwd)
+    else
+        # A repo name: the checkout of a workspace with that repo.
+        root=$(herdr workspace list | jq -r --arg n "$q" '.result.workspaces[]
+            | select(.worktree.repo_name == $n and (.worktree.is_linked_worktree | not))
+            | .worktree.checkout_path' | head -1)
+        [ -n "$root" ] || return 1
+    fi
+    # A ticket key matches as a whole segment of a worktree's name or a branch.
+    has_key() { [[ ${1,,} =~ (^|[/-])$key(-|$) ]]; }
+    {
+        while IFS=$'\t' read -r pane status cwd; do
+            if [ -n "$key" ]; then
+                has_key "${cwd##*/}" || continue
+                [ "$status" = unknown ] && kind=4shell || kind=1task
+            else
+                [ "$cwd" = "$root" ] || [[ $cwd == "$root"/* ]] || continue
+                [ "$status" = unknown ] && kind=4shell || kind=3session
+            fi
+            [ "$pane" = "${HERDR_PANE_ID:-}" ] && kind=0this
+            printf '%s\t%s\t%s\t%s\n' "$kind" "$pane" "$status" "$cwd"
+        done < <(panes)
+        if [ -n "$key" ]; then
+            [ -s "$log" ] && awk -F'\t' -v k="$key" 'tolower($3) ~ ("(^|[/-])" k "(-|$)") {
+                printf "2archived\t%s\t-\t%s\n", $3, $4 }' "$log"
+            # A worktree no pane is in and nothing archived: its pane was closed.
+            while read -r cwd; do
+                base=${cwd##*/}
+                has_key "$base" || continue
+                panes | cut -f3 | grep -qxF "$cwd" && continue
+                printf '2closed\t%s\t-\t%s\n' "$(git -C "$cwd" branch --show-current 2>/dev/null)" "$cwd"
+            done < <(herdr workspace list | jq -r '.result.workspaces[].worktree.repo_root // empty' | sort -u |
+                while read -r r; do git -C "$r" worktree list --porcelain | sed -n 's/^worktree //p'; done)
+        fi
+    } | sort -s -t$'\t' -k1,1 | sed 's/^[0-9]//' | awk -F'\t' '!seen[$1 FS $2]++' | grep .
+}
+
 case "${1:-}" in
+places)
+    [ -n "${2:-}" ] || die "places needs a ticket key, path or repo name"
+    places "$2" | column -t -s$'\t' || die "no place for $2"
+    ;;
+send)
+    pane=${2:-} handoff=${3:-}
+    [ -n "$pane" ] && [ -n "$handoff" ] || die "send needs a pane and a hand-off"
+    status=$(herdr pane get "$pane" | jq -r '.result.pane.agent_status')
+    case $status in
+    blocked) die "$pane is waiting on you; nothing sent" ;;
+    unknown) herdr pane run "$pane" "claude $(printf %q "$handoff")" >/dev/null; echo "$pane: started claude" ;;
+    working) herdr agent prompt "$pane" "$handoff" >/dev/null; echo "$pane: queued (it's working)" ;;
+    *) herdr agent prompt "$pane" "$handoff" >/dev/null; echo "$pane: sent" ;;
+    esac
+    ;;
 new)
     shift
     prompt=
@@ -91,34 +215,32 @@ new)
     done
     shift $((OPTIND - 1))
     branch=${1:-}
-    [ -n "$branch" ] || read -rp 'branch: ' branch
+    [ -n "$branch" ] || { title 'new task'; read -rp 'branch: ' branch; }
     [ -n "$branch" ] || exit 0
     # From the main checkout: herdr refuses to branch a worktree off a linked one.
     main=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || die "not in a git repo"
-    out=$(herdr worktree create --cwd "${main%/.git}" --branch "$branch" ${2:+--base "$2"} --focus)
+    out=$(herdr worktree create --cwd "${main%/.git}" --branch "$branch" ${2:+--base "$2"} $focus)
     pane=$(jq -r '.result.root_pane.pane_id' <<<"$out")
     herdr pane run "$pane" "claude${prompt:+ $(printf %q "$prompt")}" >/dev/null
     # For whoever handed the task off, to follow it with herdr agent get/read.
     echo "$pane"
     ;;
+_archive-rows)
+    # archive's picker rows; with --status, what each task would set aside.
+    rows "${2:-}"
+    ;;
 archive)
     shift
     if [ $# -eq 0 ]; then
-        # Every worktree task, statuses fetched in parallel (gh is slow).
-        tasks=$(herdr workspace list | jq -r '.result.workspaces[] | select(.worktree.is_linked_worktree)
-            | [.workspace_id, .worktree.checkout_path, .agent_status, .worktree.repo_name, .label] | @tsv')
-        [ -n "$tasks" ] || die "no worktree tasks"
-        tmp=$(mktemp -d)
-        trap 'rm -rf "$tmp"' EXIT
-        i=0
-        while IFS=$'\t' read -r ws path agent repo label; do
-            i=$((i + 1))
-            { printf '%s\t%-12s %-34.34s %-28s ' "$ws" "$repo" "$label" "$(git -C "$path" branch --show-current)"
-              status_of "$path" "$agent"; } >"$tmp/$(printf %03d $i)" &
-        done <<<"$tasks"
-        wait
-        mapfile -t picked < <(cat "$tmp"/* | fzf --multi --with-nth=2.. --delimiter='\t' --bind=ctrl-a:toggle-all \
-            --header='tab: select  ctrl-a: all  enter: archive' | cut -f1)
+        [ -n "$(tasks)" ] || die "no worktree tasks"
+        title 'archive tasks'
+        # The rows show at once; statuses (about a second each, gh and git
+        # status in parallel) replace them when ready. --id-nth keeps what's
+        # selected across the reload.
+        keys='tab: select  ctrl-a: all  enter: archive'
+        mapfile -t picked < <(rows | fzf --multi --with-nth=2.. --delimiter='\t' --id-nth=1 \
+            --bind=ctrl-a:toggle-all --header="$keys  (loading status…)" \
+            --bind="start:reload-sync($(printf %q "$0") _archive-rows --status)+change-header($keys)" | cut -f1)
         set -- "${picked[@]}"
     fi
     # The focused workspace goes last: removing the workspace this runs in may
@@ -135,16 +257,31 @@ archived)
     awk -F'\t' '{ n = split($2, r, "/"); printf "%s  %-14s %-28s %s\n", $1, r[n], $3, $6 }' "$log"
     ;;
 restore)
+    shift
+    prompt=
+    while getopts p: opt; do
+        case $opt in p) prompt=$OPTARG ;; *) exit 2 ;; esac
+    done
+    shift $((OPTIND - 1))
     [ -s "$log" ] || die "nothing archived"
-    n=$(awk -F'\t' '{ k = split($2, r, "/"); printf "%d\t%s  %-14s %-28s %s\n", NR, $1, r[k], $3, $6 }' "$log" |
-        fzf --tac --no-sort --with-nth=2.. --delimiter='\t' --query="$(repo_query)" | cut -f1) || exit 0
+    if [ -n "${1:-}" ]; then
+        # The newest entry whose branch carries the key (e.g. NUX-392) as a whole segment.
+        n=$(awk -F'\t' -v k="${1,,}" 'tolower($3) ~ ("(^|[/-])" k "(-|$)") { n = NR } END { print n }' "$log")
+        [ -n "$n" ] || die "nothing archived matches $1"
+    else
+        title "restore task"
+        n=$(awk -F'\t' '{ k = split($2, r, "/"); printf "%d\t%s  %-14s %-28s %s\n", NR, $1, r[k], $3, $6 }' "$log" |
+            fzf --tac --no-sort --with-nth=2.. --delimiter='\t' --query="$(repo_query)" | cut -f1) || exit 0
+    fi
     IFS=$'\t' read -r _ repo branch path session title < <(sed -n "${n}p" "$log")
-    out=$(herdr worktree create --cwd "$repo" --branch "$branch" --path "$path" --label "$title" --focus)
-    herdr pane run "$(jq -r '.result.root_pane.pane_id' <<<"$out")" "claude${session:+ --resume $session}" >/dev/null
+    out=$(herdr worktree create --cwd "$repo" --branch "$branch" --path "$path" --label "$title" $focus)
+    pane=$(jq -r '.result.root_pane.pane_id' <<<"$out")
+    herdr pane run "$pane" "claude${session:+ --resume $session}${prompt:+ $(printf %q "$prompt")}" >/dev/null
     sed -i "${n}d" "$log"
+    echo "$pane"
     ;;
 *)
-    sed -n '3,8s/^# \{0,1\}//p' "$0" >&2
+    sed -n '3,14s/^# \{0,1\}//p' "$0" >&2
     exit 2
     ;;
 esac
