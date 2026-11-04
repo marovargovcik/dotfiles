@@ -49,3 +49,8 @@ rows = [["state_icon", "workspace"], ["branch", "git_status"]]
 # prefix+o jumps to it
 [ui.toast]
 delivery = "system"
+
+# show the conversation summary (Claude Code sets it as the terminal title)
+# under each Claude agent row, since worktree names are random
+[ui.sidebar.agents.rows_by_agent]
+claude = [["state_icon", "workspace", "tab"], ["terminal_title_stripped"]]
