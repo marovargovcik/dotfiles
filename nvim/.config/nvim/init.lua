@@ -112,7 +112,9 @@ vim.keymap.set('n', '<leader>q', '<cmd>FzfLua diagnostics_workspace<cr>',
 
 vim.keymap.set('n', '<leader>dd', '<cmd>DiffviewOpen<cr>', { desc = 'Diff: uncommitted changes' })
 -- origin/HEAD is the remote's default branch; three dots diff from the merge base.
-vim.keymap.set('n', '<leader>dp', '<cmd>DiffviewOpen origin/HEAD...HEAD<cr>',
+-- --imply-local shows the right-hand side as the working files, so they stay
+-- editable and LSP attaches.
+vim.keymap.set('n', '<leader>dp', '<cmd>DiffviewOpen origin/HEAD...HEAD --imply-local<cr>',
   { desc = 'Diff: this branch against the default branch (PR view)' })
 vim.keymap.set('n', '<leader>dh', '<cmd>DiffviewFileHistory %<cr>', { desc = 'Diff: history of this file' })
 vim.keymap.set('n', '<leader>dc', '<cmd>DiffviewClose<cr>', { desc = 'Diff: close' })
