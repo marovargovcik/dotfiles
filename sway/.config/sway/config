@@ -46,7 +46,8 @@ input type:touchpad {
     drag disabled
     # PS/2 reports coarse, jumpy motion that acceleration would amplify.
     accel_profile flat
-    pointer_accel 0.6
+    pointer_accel 1
+    scroll_factor 0.5
 }
 
 bindsym $mod+Return exec $term
