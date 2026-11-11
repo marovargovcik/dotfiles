@@ -1,15 +1,22 @@
 #!/bin/bash
-# Bar block for caffeine (see caffeine-menu): a full cup, Good, while sleep is
-# held off, with the minutes left when there is a limit; an empty cup otherwise.
+# Bar block for caffeine (see caffeine-menu and caffeine-agents): a full cup
+# while the timer holds off sleep, with the minutes left when there is a limit,
+# a robot while agents do, both when both do; an empty cup otherwise.
 
 state="$XDG_RUNTIME_DIR/caffeine"
 
 # The cmdline check skips a pid that has since been reused by something else.
+text=
 if read -r pid until 2>/dev/null <"$state" && grep -qs caffeine "/proc/$pid/cmdline" &&
    { [ "$until" -eq 0 ] || [ "$until" -gt "$EPOCHSECONDS" ]; }; then
-    left=
-    [ "$until" -eq 0 ] || left=" $(( (until - EPOCHSECONDS + 59) / 60 ))m"
-    printf '{"text":"\U000F0176%s","state":"Good"}\n' "$left"
+    text=$'\U000F0176'
+    [ "$until" -eq 0 ] || text+=" $(( (until - EPOCHSECONDS + 59) / 60 ))m"
+fi
+elogind-inhibit --list --no-legend | grep -q '^agents ' &&
+    text=$'\U000F06A9'"${text:+ $text}"
+
+if [ -n "$text" ]; then
+    printf '{"text":"%s","state":"Good"}\n' "$text"
 else
     printf '{"text":"\U000F06CA"}\n'
 fi

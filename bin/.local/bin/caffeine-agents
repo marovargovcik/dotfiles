@@ -1,0 +1,32 @@
+#!/bin/bash
+# Holds off sleep while any herdr agent is working, alongside caffeine-menu's
+# timer: the same kind of elogind sleep inhibitor, so the screen still locks
+# and the lid, power-menu and batsignal still suspend. An agent blocked on a
+# question doesn't count. Started by sway; caffeine-status shows it.
+#
+# Polls once a minute (the bar's rule) because herdr's status events need a
+# subscription per pane. The inhibitor waits on this script's pid, so it can't
+# outlive it.
+
+working() {
+    herdr agent list 2>/dev/null |
+        jq -e 'any(.result.agents[]; .agent_status == "working")' >/dev/null
+}
+
+pid=
+while :; do
+    if working; then
+        if [ -z "$pid" ]; then
+            elogind-inhibit --what=sleep --who=agents --why='an agent is working' \
+                tail --pid=$$ -f /dev/null &
+            pid=$!
+            pkill -RTMIN+9 -x i3status-rs
+        fi
+    elif [ -n "$pid" ]; then
+        pkill -P "$pid" tail
+        wait "$pid"
+        pid=
+        pkill -RTMIN+9 -x i3status-rs
+    fi
+    sleep 60
+done

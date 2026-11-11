@@ -140,6 +140,8 @@ exec /usr/libexec/xfce-polkit
 exec mako
 # Warns at 15% and 5%, hibernates at 2%; nothing else acts on a low battery while the machine is in use.
 exec batsignal -b -D 'loginctl hibernate'
+# Holds off sleep while a herdr agent is working; caffeine-status shows it.
+exec caffeine-agents
 # Podman API socket for podman-tui and docker clients; nothing socket-activates it without systemd.
 exec podman system service --time=0
 

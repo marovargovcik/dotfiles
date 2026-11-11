@@ -6,13 +6,18 @@
 #
 # $XDG_RUNTIME_DIR/caffeine holds the inhibitor's pid and when it ends
 # (0 = never); caffeine-status reads it.
+#
+# While caffeine-agents holds its own inhibitor, a first line says so and
+# explains the bar's robot; picking it changes nothing.
 
 state="$XDG_RUNTIME_DIR/caffeine"
+agents=$'\U000F06A9 agents working: awake until they finish'
 
-choice=$(printf '%s\n' off indefinitely '5 min' '10 min' '15 min' '30 min' '60 min' |
+choice=$({ elogind-inhibit --list --no-legend | grep -q '^agents ' && printf '%s\n' "$agents"
+           printf '%s\n' off indefinitely '5 min' '10 min' '15 min' '30 min' '60 min'; } |
          fuzzel -d --no-exit-on-keyboard-focus-loss)
 case "$choice" in
-    '')           exit 0 ;;
+    ''|"$agents") exit 0 ;;
     off)          secs= ;;
     indefinitely) secs=infinity ;;
     *)            secs=$(( ${choice% min} * 60 )) ;;

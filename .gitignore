@@ -6,6 +6,7 @@ bin/**
 !bin/.local/
 !bin/.local/bin/
 !bin/.local/bin/bt-status
+!bin/.local/bin/caffeine-agents
 !bin/.local/bin/caffeine-menu
 !bin/.local/bin/caffeine-status
 !bin/.local/bin/power-menu
