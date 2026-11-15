@@ -33,6 +33,20 @@ focus=
 
 die() { echo "herdr-task: $*" >&2; exit 1; }
 
+# claude's prompt argument, read from a file so the typed line stays short: until
+# a fresh pane's shell shows its prompt, the tty refuses a long typed line
+# (over 1024 bytes on macOS, 4096 on Linux).
+prompt_arg() {
+    [ -n "$1" ] || return 0
+    local f
+    f=$(mktemp "${TMPDIR:-/tmp}/herdr-task-handoff.XXXXXX")
+    printf %s "$1" >"$f"
+    printf ' "$(cat %q && rm %q)"' "$f" "$f"
+}
+
+# Drops a line from the archive log. Not sed -i: GNU and BSD sed spell it differently.
+log_drop() { sed "$1d" "$log" >"$log.tmp" && mv "$log.tmp" "$log"; }
+
 # Newest Claude Code session started in a directory.
 session_in() {
     local dir=$HOME/.claude/projects/${1//[^A-Za-z0-9]/-} f
@@ -41,7 +55,7 @@ session_in() {
 }
 
 # Removes a worktree workspace's worktree (the branch stays) and logs it for
-# restore.
+# restore. The second argument numbers it in the progress line, like 2/3.
 archive() {
     local ws=$1 list wt path label
     list=$(herdr worktree list --workspace "$ws")
@@ -62,12 +76,37 @@ archive() {
     fi
     # Logged first: removing the workspace this runs in may end this script.
     # herdr refuses a dirty worktree; then the entry goes back out.
-    if ! herdr worktree remove --workspace "$ws" >/dev/null; then
-        sed -i '$d' "$log"
+    if ! remove_worktree "$ws" "[${2:-1/1}] $label ($(jq -r '.branch' <<<"$wt"))"; then
+        log_drop '$'
         [ -z "$trash" ] || { mv "$trash/node_modules" "$path/" && rmdir "$trash"; }
         return 1
     fi
     [ -z "$trash" ] || empty_trash "$trash"
+}
+
+# herdr worktree remove behind a line that counts seconds, so a large worktree
+# being deleted doesn't look stuck. herdr's own errors follow the line.
+remove_worktree() {
+    local ws=$1 line=$2 err pid start=$SECONDS rc=0
+    err=$(mktemp)
+    herdr worktree remove --workspace "$ws" >/dev/null 2>"$err" &
+    pid=$!
+    if [ -t 2 ]; then
+        while kill -0 "$pid" 2>/dev/null; do
+            printf '\r%s… %ds' "$line" $((SECONDS - start)) >&2
+            sleep 0.2
+        done
+        printf '\r\e[K' >&2
+    fi
+    wait "$pid" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        printf '%s: archived in %ds\n' "$line" $((SECONDS - start)) >&2
+    else
+        printf '%s: not archived\n' "$line" >&2
+        cat "$err" >&2
+    fi
+    rm -f "$err"
+    return "$rc"
 }
 
 # Deletes what archive set aside, detached so it outlives the popup, along with
@@ -202,7 +241,7 @@ send)
     status=$(herdr pane get "$pane" | jq -r '.result.pane.agent_status')
     case $status in
     blocked) die "$pane is waiting on you; nothing sent" ;;
-    unknown) herdr pane run "$pane" "claude $(printf %q "$handoff")" >/dev/null; echo "$pane: started claude" ;;
+    unknown) herdr pane run "$pane" "claude$(prompt_arg "$handoff")" >/dev/null; echo "$pane: started claude" ;;
     working) herdr agent prompt "$pane" "$handoff" >/dev/null; echo "$pane: queued (it's working)" ;;
     *) herdr agent prompt "$pane" "$handoff" >/dev/null; echo "$pane: sent" ;;
     esac
@@ -221,7 +260,7 @@ new)
     main=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || die "not in a git repo"
     out=$(herdr worktree create --cwd "${main%/.git}" --branch "$branch" ${2:+--base "$2"} $focus)
     pane=$(jq -r '.result.root_pane.pane_id' <<<"$out")
-    herdr pane run "$pane" "claude${prompt:+ $(printf %q "$prompt")}" >/dev/null
+    herdr pane run "$pane" "claude$(prompt_arg "$prompt")" >/dev/null
     # For whoever handed the task off, to follow it with herdr agent get/read.
     echo "$pane"
     ;;
@@ -245,11 +284,11 @@ archive)
     fi
     # The focused workspace goes last: removing the workspace this runs in may
     # end this script.
-    rc=0 last=
+    rc=0 last= i=0
     for ws; do
-        if [ "$ws" = "${HERDR_ACTIVE_WORKSPACE_ID:-}" ]; then last=$ws; else archive "$ws" || rc=1; fi
+        if [ "$ws" = "${HERDR_ACTIVE_WORKSPACE_ID:-}" ]; then last=$ws; else archive "$ws" "$((i += 1))/$#" || rc=1; fi
     done
-    [ -z "$last" ] || archive "$last" || rc=1
+    [ -z "$last" ] || archive "$last" "$#/$#" || rc=1
     exit $rc
     ;;
 archived)
@@ -276,8 +315,8 @@ restore)
     IFS=$'\t' read -r _ repo branch path session title < <(sed -n "${n}p" "$log")
     out=$(herdr worktree create --cwd "$repo" --branch "$branch" --path "$path" --label "$title" $focus)
     pane=$(jq -r '.result.root_pane.pane_id' <<<"$out")
-    herdr pane run "$pane" "claude${session:+ --resume $session}${prompt:+ $(printf %q "$prompt")}" >/dev/null
-    sed -i "${n}d" "$log"
+    herdr pane run "$pane" "claude${session:+ --resume $session}$(prompt_arg "$prompt")" >/dev/null
+    log_drop "$n"
     echo "$pane"
     ;;
 *)
