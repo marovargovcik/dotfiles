@@ -74,14 +74,49 @@ archive() {
         trash=$trash_root/$ws-$$
         mkdir -p "$trash" && mv "$path/node_modules" "$trash/" || trash=
     fi
+    stop_procs "$path"
     # Logged first: removing the workspace this runs in may end this script.
     # herdr refuses a dirty worktree; then the entry goes back out.
     if ! remove_worktree "$ws" "[${2:-1/1}] $label ($(jq -r '.branch' <<<"$wt"))"; then
+        # git forgot the worktree before the delete failed: the files are
+        # gone, so finish the job and keep the entry for restore.
+        if ! git -C "$(jq -r '.result.source.repo_root' <<<"$list")" worktree list --porcelain |
+            grep -qxF "worktree $path"; then
+            echo "finishing the half-done removal" >&2
+            stop_procs "$path"
+            rm -rf "$path"
+            herdr workspace close "$ws" >/dev/null
+            [ -z "$trash" ] || empty_trash "$trash"
+            return 0
+        fi
         log_drop '$'
         [ -z "$trash" ] || { mv "$trash/node_modules" "$path/" && rmdir "$trash"; }
         return 1
     fi
     [ -z "$trash" ] || empty_trash "$trash"
+}
+
+# Stops what runs in a worktree, short of its panes' shells (herdr closes
+# those): an sbt server, bloop or metals still writing into it fails herdr's
+# delete halfway, after git has already forgotten the worktree. Spares this
+# script's ancestors, as the popup may run in the worktree.
+stop_procs() {
+    local path=$1 keep=" " pid pids=() n
+    pid=$$
+    while [ "${pid:-0}" -gt 1 ]; do keep+="$pid "; pid=$(ps -o ppid= -p "$pid" | tr -d ' '); done
+    while read -r pid; do
+        [[ $keep == *" $pid "* ]] && continue
+        [ "$(ps -o comm= -p "$(ps -o ppid= -p "$pid" | tr -d ' ')" 2>/dev/null)" = herdr ] && continue
+        pids+=("$pid")
+    done < <(lsof -w -d cwd -Fpn 2>/dev/null | awk -v p="$path" '/^p/ { pid = substr($0, 2) }
+        /^n/ { n = substr($0, 2); if (n == p || index(n, p "/") == 1) print pid }')
+    [ ${#pids[@]} -gt 0 ] || return 0
+    kill "${pids[@]}" 2>/dev/null || true
+    for n in $(seq 50); do
+        kill -0 "${pids[@]}" 2>/dev/null || return 0
+        sleep 0.1
+    done
+    kill -9 "${pids[@]}" 2>/dev/null || true
 }
 
 # herdr worktree remove behind a line that counts seconds, so a large worktree
@@ -119,7 +154,7 @@ empty_trash() {
 # What a worktree has that archiving would set aside, for archive's picker.
 status_of() {
     local path=$1 agent=$2 pr base ahead n remote out tags=()
-    cd "$path"
+    cd "$path" 2>/dev/null && git rev-parse --git-dir >/dev/null 2>&1 || { echo 'not a worktree'; return; }
     pr=$(gh pr view --json state -q .state 2>/dev/null) || pr=
     base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=main
     ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || ahead=0
@@ -159,7 +194,8 @@ rows() {
     while IFS=$'\t' read -r ws path agent repo label; do
         i=$((i + 1))
         # Long branches are cut so the status after them stays in view.
-        branch=$(git -C "$path" branch --show-current)
+        # A worktree half removed or deleted by hand mustn't empty the picker.
+        branch=$(git -C "$path" branch --show-current 2>/dev/null) || branch='?'
         [ ${#branch} -le 28 ] || branch="${branch:0:27}…"
         { printf '%s\t%-12s %-34.34s %s%*s ' "$ws" "$repo" "$label" "$branch" $((28 - ${#branch})) ''
           if [ "${1:-}" = --status ]; then status_of "$path" "$agent"; else echo; fi
