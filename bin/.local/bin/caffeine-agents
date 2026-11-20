@@ -1,23 +1,83 @@
 #!/bin/bash
-# Holds off sleep while any herdr agent is working, alongside caffeine-menu's
-# timer: the same kind of elogind sleep inhibitor, so the screen still locks
-# and the lid, power-menu and batsignal still suspend. An agent blocked on a
-# question doesn't count. Started by sway; caffeine-status shows it.
+# Holds off sleep while anything in a terminal is working, alongside
+# caffeine-menu's timer: the same kind of elogind sleep inhibitor, so the screen
+# still locks and the lid, power-menu and batsignal still suspend. Started by
+# sway; caffeine-status shows it.
 #
-# Polls once a minute (the bar's rule) because herdr's status events need a
-# subscription per pane. The inhibitor waits on this script's pid, so it can't
-# outlive it.
+# Checks every terminal once a minute (the bar's rule), foot windows and tmux
+# panes alike: each is a pseudo-terminal with a program in front (its
+# foreground process group). A terminal is working when what's in front is
+# - an agent its hooks recorded as working (tt state: a file per agent pid)
+# - an agent past its turn (done, or blocked on a question) with work still
+#   going: a Bash tool command running (a background task), or a subagent whose
+#   transcript changed in the last two minutes
+# - any other program that used 5% of a CPU since the last check: a build or a
+#   test run, not an idle editor or dev server
+# A shell at its prompt is idle. An agent that was killed is no longer in
+# front, so whatever its file says stops counting.
+#
+# The inhibitor waits on this script's pid, so it can't outlive it.
+
+interval=60
+hz=$(getconf CLK_TCK)
+agents=${XDG_RUNTIME_DIR:-/tmp}/agents
+declare -A last # process group -> its CPU ticks at the previous check
+
+# Every process: pid, parent, process group, session, terminal, the terminal's
+# foreground group, CPU ticks (its own and those of the children it has waited
+# for). The name in parentheses may hold spaces, so fields count from after the
+# last ")".
+procs() {
+    awk '{ pid = $1; sub(/^.*\) /, ""); print pid, $2, $3, $4, $5, $6, $12 + $13 + $14 + $15 }' \
+        /proc/[0-9]*/stat 2>/dev/null
+}
 
 working() {
-    herdr agent list 2>/dev/null |
-        jq -e 'any(.result.agents[]; .agent_status == "working")' >/dev/null
+    local pid pp pg sid tty tp t fg f state session child busy=1
+    local -A parent tpgid ticks leader now
+    while read -r pid pp pg sid tty tp t; do
+        parent[$pid]=$pp tpgid[$pid]=$tp
+        ticks[$pg]=$((${ticks[$pg]:-0} + t))
+        # A terminal's first program (usually its shell) leads its session.
+        # Pseudo-terminals are majors 136-143; the console sway runs on isn't one.
+        tty=$((tty >> 8 & 0xfff))
+        [ "$sid" = "$pid" ] && ((tty >= 136 && tty <= 143)) && leader[$pid]=1
+    done < <(procs)
+
+    # Files of agents that are gone.
+    for f in "$agents"/*; do
+        [ -e "$f" ] && [ -z "${parent[${f##*/}]:-}" ] && rm -f "$f"
+    done
+
+    for pid in "${!leader[@]}"; do
+        fg=${tpgid[$pid]:--1}
+        [ "$fg" -gt 0 ] || continue
+        if [ -f "$agents/$fg" ]; then
+            IFS=$'\t' read -r state session <"$agents/$fg"
+            [ "$state" = working ] && busy=0 && continue
+            # The agent leads its process group; Bash tool commands are its children.
+            for child in "${!parent[@]}"; do
+                [ "${parent[$child]}" = "$fg" ] || continue
+                grep -qa '/.claude/shell-snapshots/' "/proc/$child/cmdline" 2>/dev/null && busy=0
+            done
+            [ -n "$session" ] && find ~/.claude/projects/*/"$session"/subagents -name '*.jsonl' -mmin -2 2>/dev/null |
+                grep -q . && busy=0
+        elif [ "$fg" != "$pid" ]; then
+            now[$fg]=${ticks[$fg]:-0}
+            [ -n "${last[$fg]:-}" ] && (((now[$fg] - last[$fg]) * 100 >= hz * interval * 5)) && busy=0
+        fi
+    done
+
+    last=()
+    for fg in "${!now[@]}"; do last[$fg]=${now[$fg]}; done
+    return $busy
 }
 
 pid=
 while :; do
     if working; then
         if [ -z "$pid" ]; then
-            elogind-inhibit --what=sleep --who=agents --why='an agent is working' \
+            elogind-inhibit --what=sleep --who=agents --why='work in progress in a terminal' \
                 tail --pid=$$ -f /dev/null &
             pid=$!
             pkill -RTMIN+9 -x i3status-rs
@@ -28,5 +88,5 @@ while :; do
         pid=
         pkill -RTMIN+9 -x i3status-rs
     fi
-    sleep 60
+    sleep $interval
 done

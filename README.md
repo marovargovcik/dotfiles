@@ -149,7 +149,7 @@ sudo xbps-install -S \
   cups cups-filters cups-browsed avahi nss-mdns brother-brlaser \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
   git git-lfs github-cli mise uv neovim gcc starship bash-completion fzf fd ripgrep zoxide eza bat delta \
-  lazygit tmux lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip \
+  lazygit tmux ncurses-term lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip \
   podman podman-compose podman-tui aardvark-dns
 ```
 
@@ -171,7 +171,8 @@ Packages that look optional and are not:
 | `cronie` | snapper timeline snapshots (`/etc/cron.hourly/snapper`) |
 | `socklog-void` | any syslog at all; Void ships no logger |
 | `gcc` | nvim-treesitter compiling its parsers |
-| `libnotify` | `notify-send`, which herdr and batsignal use to reach mako |
+| `ncurses-term` | the `tmux-256color` terminfo; without it tmux commands run inside tmux fail (`tt`'s popups come up empty) |
+| `libnotify` | `notify-send`, which batsignal uses to reach mako |
 | `fprintd` | fingerprint unlock in swaylock (§6) |
 | `gsettings-desktop-schemas` | the dark preference below; without it `gsettings` has nothing to set |
 | `aardvark-dns` | containers in a `podman compose` network reaching each other by name |
@@ -232,13 +233,13 @@ sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 maro
 ```sh
 git clone https://github.com/marovargovcik/dotfiles ~/dotfiles
 rm ~/.bash_profile ~/.bashrc                        # /etc/skel copies block the symlinks
-mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/herdr ~/.config/containers ~/.claude
+mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/gh ~/.config/containers ~/.claude
 cd ~/dotfiles && stow */
 ```
 
 **Create the real directories first** — stow symlinks any missing directory
-whole, and your private keys, binaries, herdr's sockets and logs, Podman's
-connection list and Claude Code's sessions and credentials would then live inside the
+whole, and your private keys, binaries, the `gh` token, Podman's connection
+list and Claude Code's sessions and credentials would then live inside the
 repo. `chmod 700 ~/.ssh` after creating it.
 
 What the packages provide, so you know what *not* to write by hand:
@@ -251,9 +252,10 @@ What the packages provide, so you know what *not* to write by hand:
 | `bin` | bar and menu scripts in `~/.local/bin`; power actions use `loginctl`, no sudo |
 | `fuzzel` | launcher lists only `~/.config/fuzzel/applications`, which is not in git |
 | `ssh` | `~/.ssh/config` only — never a key |
-| `herdr` | `herdr-task`: one worktree workspace per Claude Code task, titled after the conversation, archived and restored with it |
+| `gh` | `config.yml` only; `hosts.yml` holds the token and stays out |
+| `tmux` | prefix ctrl+space, vi copy mode, prefix+e picks text from the pane (extrakto). `tt`: a session per repo with Claude Code in `orch`, a window per task in its own worktree, archived and restored with it |
 | `xdg` | lowercase `~/downloads` and other user folders; file dialogs that open lf instead of a GTK window |
-| `claude` | `~/.claude/CLAUDE.md` only, Claude Code's global instructions (herdr tasks) |
+| `claude` | `~/.claude/CLAUDE.md` only, Claude Code's global instructions (tt tasks) |
 | the rest | app configs; comments in the files say why |
 
 Add an app to the launcher:
@@ -271,7 +273,7 @@ mise install                                    # tools in mise/.config/mise/con
 git lfs install
 gh auth login                                   # git uses its token
 uv tool install basedpyright                    # Python language server for nvim
-herdr integration install claude                # agent state in the herdr sidebar
+git clone https://github.com/tmux-plugins/tpm ~/.local/share/tmux/plugins/tpm   # then prefix+I in tmux installs the plugins
 
 # Apps and websites that ask get "dark".
 gsettings set org.gnome.desktop.interface color-scheme prefer-dark
@@ -280,11 +282,19 @@ gsettings set org.gnome.desktop.interface color-scheme prefer-dark
 # about:config → widget.use-xdg-desktop-portal.file-picker = 1
 
 # Claude Code preferences, merged into ~/.claude/settings.json. Not a stow
-# package: Claude Code and herdr also write machine-specific state to that file.
+# package: Claude Code also writes machine-specific state to that file.
 f=~/.claude/settings.json; mkdir -p ~/.claude; [ -s "$f" ] || echo '{}' > "$f"
-jq '. + {theme: "dark", editorMode: "vim", disableAgentView: true}
-    | .hooks.Stop = ((.hooks.Stop // []) | map(select(.hooks[0].command != "herdr-claude-title"))
-        + [{hooks: [{type: "command", command: "herdr-claude-title", timeout: 10}]}])' "$f" > "$f.new" && mv "$f.new" "$f"
+jq '. + {theme: "dark", editorMode: "vim", disableAgentView: true}' "$f" > "$f.new" && mv "$f.new" "$f"
+
+# tt's agent state (what tt send, tt pick, the status line and caffeine-agents
+# read): Claude Code's hooks tag the tmux pane they run in
+jq 'reduce (["SessionStart", null, "start"], ["UserPromptSubmit", null, "working"],
+        ["PostToolUse", null, "working"], ["PermissionRequest", null, "blocked"],
+        ["PreToolUse", "AskUserQuestion", "blocked"], ["Notification", "elicitation_dialog", "blocked"],
+        ["Stop", null, "done"], ["SessionEnd", null, "clear"]) as [$e, $m, $s] (.;
+    .hooks[$e] = ((.hooks[$e] // []) | map(select(.hooks[0].command | startswith("tt state") | not)))
+        + [{hooks: [{type: "command", command: "tt state \($s)", timeout: 5}]} + if $m then {matcher: $m} else {} end])' \
+    "$f" > "$f.new" && mv "$f.new" "$f"
 ```
 
 **What installs what:** xbps, unless one of these applies:

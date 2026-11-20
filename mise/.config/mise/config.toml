@@ -1,6 +1,5 @@
 [tools]
 claude = "latest"
-herdr = "latest"
 java = "zulu-25"
 lefthook = "2.2.2"
 node = "26"

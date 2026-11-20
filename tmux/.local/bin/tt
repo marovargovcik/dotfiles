@@ -1,0 +1,809 @@
+#!/usr/bin/env bash
+# tt: tmux tasks. A tmux session per repo, a window per task, each task in its
+# own git worktree with Claude Code running in it.
+#
+#   tt up                              reopens what was open (after a reboot or a killed server): every session's
+#                                      agent windows, each resuming its own conversation; tmux runs it on start
+#   tt proj [dir]                      the repo's session: claude in window "orch" (the main checkout) and in
+#                                      a window per worktree; creates what's missing, then switches to it
+#   tt new [-p prompt] [branch] [base] worktree + window for the repo in $PWD, starts claude on prompt
+#   tt archive [window...]             picks tasks with fzf, removes their worktrees (branches stay), logs them;
+#                                      previews the highlighted task's pane
+#   tt archived                        lists archived tasks
+#   tt restore [-p prompt] [key]       the newest archived task whose branch has key (or one picked with fzf):
+#                                      same path, same branch, claude --resume on prompt
+#   tt places <ticket|path|repo>       where a request belongs, most specific first: this, task, archived,
+#                                      closed (worktree with no window), session, shell
+#   tt send <pane> <hand-off>          prompts the pane's agent, or starts claude there; refuses a blocked pane
+#   tt read <pane> [lines]             what the pane shows, plus its scrollback
+#   tt pick                            fuzzy-finds a session, window or pane: enter goes there, ctrl-x kills
+#                                      that row, ctrl-s the row's whole session; previews the row's pane
+#   tt count                           blocked agents and finished ones not looked at yet, as a status-line counter
+#   tt orch [session [window]]         goes to the session's next orchestrator window after window
+#   tt orch new [dir [client]]         another orchestrator window in the repo's main checkout, claude in it
+#   tt state <start|working|done|blocked|clear> [agent]
+#                                      agent hook: tags $TMUX_PANE with the agent's state (hook JSON on stdin),
+#                                      and records it in $XDG_RUNTIME_DIR/agents/<pid>, in tmux or not
+#
+# Claude Code's hooks for state (in ~/.claude/settings.json, see the README):
+#   start    SessionStart
+#   working  UserPromptSubmit, PostToolUse (back from blocked once a prompt is answered)
+#   blocked  PermissionRequest (Notification's permission_prompt comes ~6s late),
+#            PreToolUse on AskUserQuestion, Notification's elicitation_dialog
+#   done     Stop. Not SubagentStop: subagents run inside the session's turn.
+#   clear    SessionEnd
+#
+# Tags, never window names or indexes, say what is what:
+#   session  @kind agent, @repo <main checkout>   the rest of tmux stays plain tmux
+#   window   @role orchestrator                   "orch", in the main checkout; any number of them
+#   window   @task <branch>, @task_path <path>    a task
+#   pane     @agent, @agent_state, @agent_seen, @agent_session   set by the agent's hooks
+#
+# The worktree comes back at the same path, so `claude --resume` finds the
+# conversation: Claude Code keys transcripts by directory.
+
+# env bash: macOS's /bin/bash 3.2 has no mapfile or ${var,,}. Linux and BSD
+# tools alike: no sed -i, no stat, no GNU-only flags.
+set -euo pipefail
+
+log=${XDG_STATE_HOME:-$HOME/.local/state}/tt/archive.tsv
+trash_root=${XDG_CACHE_HOME:-$HOME/.cache}/tt/trash
+# What tt up reopens: a line per agent pane, rewritten on every agent state change.
+open=${XDG_STATE_HOME:-$HOME/.local/state}/tt/open.tsv
+# Held while tt up runs. A directory: mkdir either makes it or fails, atomically.
+lock=$open.lock
+worktrees=${TT_WORKTREES:-$HOME/.worktrees}
+# Open pickers listen here, a socket each named <kind>.<pid>.sock, to reload
+# when an agent's state changes.
+pickers=${TMPDIR:-/tmp}/tt-$(id -u)
+tab=$'\t'
+# Records are tab-separated, but read splits them on \037: tab is whitespace to
+# read, so an empty field between two tabs would vanish and shift the rest.
+us=$'\037'
+fields() { tr '\t' '\037'; }
+# The title the pane's program set (Claude Code: the conversation's); tmux starts
+# every pane with the host name, which says nothing.
+title='#{?#{==:#{pane_title},#{host}},,#{pane_title}}'
+# An agent's tags hold only while it's still what the pane runs: one that was
+# killed never gets to SessionEnd and leaves them behind.
+live='#{==:#{pane_current_command},#{@agent}}'
+live_state="#{?$live,#{@agent_state},}"
+
+# Every fzf list here reads top-down from the prompt, like the tree; options
+# already in FZF_DEFAULT_OPTS come later and win.
+export FZF_DEFAULT_OPTS="--layout=reverse ${FZF_DEFAULT_OPTS:-}"
+
+die() { echo "tt: $*" >&2; exit 1; }
+
+# ── tmux backend ────────────────────────────────────────────────────────────
+# Everything that talks to tmux. Another multiplexer would replace these.
+
+# The project session of a repo (its main checkout), by tag; none when no
+# server is running.
+mux_project() {
+    tmux list-sessions -F "#{session_id}$tab#{@repo}" 2>/dev/null |
+        awk -F'\t' -v r="$1" '$2 == r { print $1; exit }' || true
+}
+
+# Creates a repo's project session with its orchestrator window; prints the
+# orchestrator's pane. tmux names can't hold . or :, and must be unique.
+mux_create_project() {
+    local root=$1 name n=1 out
+    name=${root##*/} && name=${name//[.:]/_}
+    while tmux has-session -t "=$name" 2>/dev/null; do n=$((n + 1)) && name=${root##*/}-$n && name=${name//[.:]/_}; done
+    out=$(tmux new-session -d -P -F "#{session_id}$us#{window_id}$us#{pane_id}" -s "$name" -n orch -c "$root")
+    IFS=$us read -r s w p <<<"$out"
+    tmux set -t "$s" @kind agent \; set -t "$s" @repo "$root" \; set -w -t "$w" @role orchestrator
+    echo "$p"
+}
+
+# Orchestrator windows of a session, in window order.
+mux_orchs() {
+    tmux list-windows -t "$1" -F "#{window_id}$tab#{@role}" | awk -F'\t' '$2 == "orchestrator" { print $1 }'
+}
+
+# Another orchestrator window, after the last one (-a), so they stay together
+# before the tasks; prints its pane.
+mux_create_orch() {
+    local s=$1 root=$2 out
+    out=$(tmux new-window -d -a -P -F "#{window_id}$us#{pane_id}" -t "$(mux_orchs "$s" | tail -1)" -n orch -c "$root")
+    IFS=$us read -r w p <<<"$out"
+    tmux set -w -t "$w" @role orchestrator
+    echo "$p"
+}
+
+# A task window in a project session; prints its pane.
+mux_create_task() {
+    local s=$1 path=$2 branch=$3 out
+    out=$(tmux new-window -d -P -F "#{window_id}$us#{pane_id}" -t "$s:" -n "$branch" -c "$path")
+    IFS=$us read -r w p <<<"$out"
+    tmux set -w -t "$w" @task "$branch" \; set -w -t "$w" @task_path "$path"
+    echo "$p"
+}
+
+# Types a command at a pane's shell prompt.
+mux_run() { tmux send-keys -t "$1" -l "$2" \; send-keys -t "$1" Enter; }
+
+# Pastes text into a pane's program and submits it. Bracketed paste (-p) keeps
+# newlines from submitting early; Enter goes separately, after the TUI has
+# taken the paste in.
+mux_send() {
+    printf %s "$2" | tmux load-buffer -b tt-send -
+    tmux paste-buffer -p -d -b tt-send -t "$1"
+    sleep 0.3
+    tmux send-keys -t "$1" Enter
+}
+
+# Every task window: window, path, agent state, repo, conversation title.
+mux_tasks() {
+    tmux list-windows -a -F "#{window_id}$tab#{@task_path}$tab$live_state$tab#{@repo}$tab$title" 2>/dev/null |
+        awk -F'\t' '$2 != ""'
+}
+
+# Every pane in a project session: pane, agent state, agent, cwd, window role, task.
+mux_panes() {
+    tmux list-panes -a -F "#{@kind}$tab#{pane_id}$tab$live_state$tab#{?$live,#{@agent},}$tab#{pane_current_path}$tab#{@role}$tab#{@task}" 2>/dev/null |
+        awk -F'\t' '$1 == "agent"' | cut -f2-
+}
+
+# Shows a session, window or pane: switches the client inside tmux, attaches outside it.
+mux_focus() {
+    if [ -n "${TMUX:-}" ]; then
+        tmux switch-client -t "$1" \; select-window -t "$1" \; select-pane -t "$1"
+    else
+        exec tmux attach -t "$1"
+    fi
+}
+
+# ── agent ───────────────────────────────────────────────────────────────────
+
+# claude's prompt argument, read from a file so the typed line stays short: until
+# a fresh pane's shell shows its prompt, the tty refuses a long typed line
+# (over 1024 bytes on macOS, 4096 on Linux).
+prompt_arg() {
+    [ -n "$1" ] || return 0
+    local f
+    f=$(mktemp "${TMPDIR:-/tmp}/tt-handoff.XXXXXX")
+    printf %s "$1" >"$f"
+    printf ' "$(cat %q && rm %q)"' "$f" "$f"
+}
+
+# Newest Claude Code session started in a directory.
+session_in() {
+    local dir=$HOME/.claude/projects/${1//[^A-Za-z0-9]/-} f
+    f=$(ls -t -- "$dir"/*.jsonl 2>/dev/null | head -1) || true
+    [ -n "$f" ] && basename "$f" .jsonl || true
+}
+
+# The command that starts claude in a directory, resuming its newest conversation if asked.
+agent_cmd() {
+    local dir=$1 resume=$2 prompt=$3 session=
+    [ "$resume" = resume ] && session=$(session_in "$dir")
+    printf 'claude%s%s' "${session:+ --resume $session}" "$(prompt_arg "$prompt")"
+}
+
+# ── projects and tasks ──────────────────────────────────────────────────────
+
+# The main checkout of the repo a path is in.
+repo_root() {
+    local git
+    git=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+    echo "${git%/.git}"
+}
+
+# The project session of a repo, created with claude in "orch" if missing.
+project() {
+    local root=$1 s p
+    s=$(mux_project "$root")
+    if [ -z "$s" ]; then
+        p=$(mux_create_project "$root")
+        mux_run "$p" "$(agent_cmd "$root" resume '')"
+        s=$(mux_project "$root")
+    fi
+    echo "$s"
+}
+
+# Worktrees of a repo other than the main checkout.
+linked_worktrees() {
+    git -C "$1" worktree list --porcelain | sed -n 's/^worktree //p' | tail -n +2
+}
+
+# Where a new worktree goes: the branch, slashes and all, as one directory.
+worktree_path() { echo "$worktrees/${1##*/}/${2//\//-}"; }
+
+# Opens a task window in a repo's session, starting claude there; prints the pane.
+open_task() {
+    local root=$1 path=$2 cmd=$3 s branch p
+    s=$(project "$root")
+    branch=$(git -C "$path" branch --show-current)
+    p=$(mux_create_task "$s" "$path" "${branch:-${path##*/}}")
+    mux_run "$p" "$cmd"
+    echo "$p"
+}
+
+# Records every agent pane for tt up: session, its @kind and @repo, window
+# @role, @task and name (one tmux names itself after its program is left out),
+# directory, conversation. Not while tt up is restoring (a lock under two
+# minutes old): the record would hold only what's back so far. A failed list
+# (the server going down) leaves the record as it was.
+save() {
+    [ -d "$lock" ] && [ -z "$(find "$lock" -maxdepth 0 -mmin +2)" ] && return 0
+    mkdir -p "${open%/*}"
+    tmux list-panes -a -F "#{session_name}$tab#{@kind}$tab#{@repo}$tab#{@role}$tab#{@task}$tab#{pane_current_path}$tab#{?automatic-rename,,#{window_name}}$tab#{@agent_session}" \
+        >"$open.$$" 2>/dev/null && awk -F'\t' '$8 != ""' "$open.$$" >"$open.$$.f" && mv "$open.$$.f" "$open"
+    rm -f "$open.$$"
+}
+
+# fzf options for a picker that reloads with tt _<kind>-rows when told to
+# (tt _notify); --id-nth keeps the cursor on its row across a reload. The
+# socket goes when tt exits.
+live() {
+    mkdir -p "$pickers"
+    sock=$pickers/$1.$$.sock
+    trap 'rm -f "$sock"' EXIT
+    live_opts=(--listen="$sock" --id-nth=1)
+}
+
+# The nearest agent process above this hook: pid, process group, and its
+# terminal's foreground group.
+agent_proc() {
+    local pid=$PPID parent pg tpg comm
+    while [ "${pid:-0}" -gt 1 ]; do
+        read -r parent pg tpg comm < <(ps -o ppid=,pgid=,tpgid=,comm= -p "$pid") || return 1
+        [ "${comm##*/}" = "$1" ] && { echo "$pid $pg $tpg"; return; }
+        pid=$parent
+    done
+    return 1
+}
+
+# Whether that agent holds its terminal. A claude -p that the agent runs is off
+# the terminal, in a session of its own.
+holds_terminal() {
+    local pid pg tpg
+    read -r pid pg tpg < <(agent_proc "$1") || return 1
+    [ "$pg" = "$tpg" ]
+}
+
+# Every agent's state, in tmux or not, in a file named after its pid, for
+# caffeine-agents: state, then session. A file whose process is gone is stale.
+record() {
+    local dir=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/agents pid _
+    read -r pid _ < <(agent_proc "$1") || return 0
+    mkdir -p "$dir"
+    if [ "$2" = clear ]; then rm -f "$dir/$pid"; else printf '%s\t%s\n' "$2" "$3" >"$dir/$pid"; fi
+}
+
+# Tells every open picker to reload, in the background so a hook doesn't wait.
+# A socket nothing answers on is left over from a picker that died: it goes.
+notify() {
+    local s kind self
+    self=$(printf %q "$0")
+    for s in "$pickers"/*.sock; do
+        [ -S "$s" ] || continue
+        kind=${s##*/} kind=${kind%%.*}
+        curl -s -o /dev/null --max-time 2 --unix-socket "$s" http://localhost \
+            -d "reload-sync($self _$kind-rows)" || rm -f "$s"
+    done >/dev/null 2>&1 &
+}
+
+# Drops a line from the archive log. Not sed -i: GNU and BSD sed spell it differently.
+log_drop() { sed "$1d" "$log" >"$log.tmp" && mv "$log.tmp" "$log"; }
+
+# Removes a task's worktree (the branch stays), closes its window and logs it
+# for restore. The second argument numbers it in the progress line, like 2/3.
+archive() {
+    local w=$1 path repo label branch trash=
+    IFS=$us read -r path repo label < <(tmux display -p -t "$w" "#{@task_path}$us#{@repo}$us$title")
+    [ -n "$path" ] || { echo "tt: $w is not a task window" >&2; return 1; }
+    [ -z "$(git -C "$path" status --porcelain)" ] || { echo "tt: ${path##*/} has uncommitted changes; kept" >&2; return 1; }
+    branch=$(git -C "$path" branch --show-current)
+    # Claude Code puts a spinner before the conversation title.
+    [[ $label =~ ^[^[:alnum:]]+\ (.*)$ ]] && label=${BASH_REMATCH[1]}
+    mkdir -p "${log%/*}"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F)" "$repo" "$branch" "$path" "$(session_in "$path")" "${label//$tab/ }" >>"$log"
+    # Deleting node_modules (~400k files) took most of archive's time: it's
+    # moved aside on the same volume, and deleted in the background once the
+    # worktree is gone.
+    if [ -d "$path/node_modules" ]; then
+        trash=$trash_root/${w#@}-$$
+        mkdir -p "$trash" && mv "$path/node_modules" "$trash/" || trash=
+    fi
+    # The window first, so claude isn't writing in a directory being removed.
+    tmux kill-window -t "$w"
+    if ! remove_worktree "$repo" "$path" "[${2:-1/1}] $label ($branch)"; then
+        log_drop '$'
+        [ -z "$trash" ] || { mv "$trash/node_modules" "$path/" && rmdir "$trash"; }
+        open_task "$repo" "$path" "$(agent_cmd "$path" resume '')" >/dev/null
+        return 1
+    fi
+    [ -z "$trash" ] || empty_trash "$trash"
+}
+
+# git worktree remove behind a line that counts seconds, so a large worktree
+# being deleted doesn't look stuck. git's own errors follow the line.
+remove_worktree() {
+    local repo=$1 path=$2 line=$3 err pid start=$SECONDS rc=0
+    err=$(mktemp)
+    git -C "$repo" worktree remove "$path" 2>"$err" &
+    pid=$!
+    if [ -t 2 ]; then
+        while kill -0 "$pid" 2>/dev/null; do
+            printf '\r%s… %ds' "$line" $((SECONDS - start)) >&2
+            sleep 0.2
+        done
+        printf '\r\e[K' >&2
+    fi
+    wait "$pid" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        printf '%s: archived in %ds\n' "$line" $((SECONDS - start)) >&2
+    else
+        printf '%s: not archived\n' "$line" >&2
+        cat "$err" >&2
+    fi
+    rm -f "$err"
+    return "$rc"
+}
+
+# Deletes what archive set aside, detached so it outlives the popup, along with
+# anything an earlier run left behind (older than an hour).
+empty_trash() {
+    nohup sh -c 'rm -rf "$1"; find "$2" -mindepth 1 -maxdepth 1 -mmin +60 -exec rm -rf {} +' \
+        _ "$1" "$trash_root" >/dev/null 2>&1 &
+}
+
+# What a worktree has that archiving would set aside, for archive's picker.
+status_of() {
+    local path=$1 agent=$2 pr base ahead n remote out tags=()
+    cd "$path"
+    pr=$(gh pr view --json state -q .state 2>/dev/null) || pr=
+    base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=main
+    ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || ahead=0
+    n=$(($(git status --porcelain | wc -l)))  # BSD wc pads with spaces
+    remote=refs/remotes/origin/$(git branch --show-current)
+    case $agent in working | blocked) tags+=("claude $agent") ;; esac
+    [ "$n" -gt 0 ] && tags+=("$n uncommitted")
+    [ -n "$pr" ] && tags+=("pr ${pr,,}")
+    case $pr in MERGED | CLOSED) ;; *)
+        if [ "$ahead" -gt 0 ]; then
+            tags+=("$ahead ahead")
+            if ! git rev-parse -q --verify "$remote" >/dev/null; then
+                tags+=("not pushed")
+            elif [ "$(git rev-list --count "$remote..HEAD")" -gt 0 ]; then
+                tags+=("$(git rev-list --count "$remote..HEAD") unpushed")
+            fi
+        elif [ "$n" -eq 0 ] && [ -z "$pr" ]; then
+            tags+=(untouched)
+        fi
+        ;;
+    esac
+    printf -v out ' · %s' "${tags[@]}"
+    echo "${out:3}"
+}
+
+# archive's picker rows, one per task; with --status, statuses fetched in
+# parallel and printed in task order.
+rows() {
+    local tmp i=0 w path agent repo label branch
+    tmp=$(mktemp -d)
+    while IFS=$us read -r w path agent repo label; do
+        i=$((i + 1))
+        [[ $label =~ ^[^[:alnum:]]+\ (.*)$ ]] && label=${BASH_REMATCH[1]}
+        # Long branches are cut so the status after them stays in view.
+        branch=$(git -C "$path" branch --show-current)
+        [ ${#branch} -le 28 ] || branch="${branch:0:27}…"
+        { printf '%s\t%-12s %-34.34s %s%*s ' "$w" "${repo##*/}" "$label" "$branch" $((28 - ${#branch})) ''
+          if [ "${1:-}" = --status ]; then status_of "$path" "$agent"; else echo; fi
+        } >"$tmp/$(printf %03d $i)" &
+    done < <(mux_tasks | fields)
+    wait
+    cat "$tmp"/* 2>/dev/null
+    rm -rf "$tmp"
+}
+
+# Starts restore's picker on the repo of $PWD, if it's in one; ctrl+u clears it.
+repo_query() {
+    local root
+    root=$(repo_root .) || return 0
+    printf "'%s " "${root##*/}"
+}
+
+# The places a ticket key, path or repo name could go to, one per line:
+# kind, pane or branch, status, path. Kinds rank most specific first.
+places() {
+    local q=$1 key='' root='' pane state agent cwd task kind r
+    if [[ $q =~ ^[A-Za-z]+-[0-9]+$ ]]; then
+        key=${q,,}
+    elif [ -e "$q" ]; then
+        root=$(git -C "$q" rev-parse --show-toplevel 2>/dev/null) || root=$(cd "$q" && pwd)
+    else
+        # A repo name: the main checkout of a project session's repo.
+        root=$(tmux list-sessions -F '#{@repo}' 2>/dev/null | awk -v n="$q" '$0 ~ ("/" n "$")' | head -1)
+        [ -n "$root" ] || return 1
+    fi
+    # A ticket key matches as a whole segment of a worktree's name or a branch.
+    has_key() { [[ ${1,,} =~ (^|[/-])$key(-|$) ]]; }
+    {
+        while IFS=$us read -r pane state agent cwd _ task; do
+            if [ -n "$key" ]; then
+                has_key "${cwd##*/}" || has_key "$task" || continue
+                [ -z "$agent" ] && kind=4shell || kind=1task
+            else
+                [ "$cwd" = "$root" ] || [[ $cwd == "$root"/* ]] || continue
+                [ -z "$agent" ] && kind=4shell || kind=3session
+            fi
+            [ "$pane" = "${TMUX_PANE:-}" ] && kind=0this
+            [ -n "$agent" ] && state=${state:-idle} || state=-
+            printf '%s\t%s\t%s\t%s\n' "$kind" "$pane" "$state" "$cwd"
+        done < <(mux_panes | fields)
+        if [ -n "$key" ]; then
+            [ -s "$log" ] && awk -F'\t' -v k="$key" 'tolower($3) ~ ("(^|[/-])" k "(-|$)") {
+                printf "2archived\t%s\t-\t%s\n", $3, $4 }' "$log"
+            # A worktree no window is in and nothing archived: its window was closed.
+            while read -r cwd; do
+                has_key "${cwd##*/}" || continue
+                mux_panes | cut -f4 | grep -qxF "$cwd" && continue
+                printf '2closed\t%s\t-\t%s\n' "$(git -C "$cwd" branch --show-current 2>/dev/null)" "$cwd"
+            done < <(tmux list-sessions -F '#{@repo}' 2>/dev/null | sort -u | grep . |
+                while read -r r; do linked_worktrees "$r"; done)
+        fi
+    } | sort -s -t"$tab" -k1,1 | sed 's/^[0-9]//' | awk -F'\t' '!seen[$1 FS $2]++' | grep .
+}
+
+# pick's rows, like the tree: a session, then each window, then each pane, but
+# only for windows split into several (a one-pane window is its pane). Each row
+# starts with its tmux id ($ session, @ window, % pane), then the agent's state
+# as an icon (a session or window takes the most urgent under it: ⚠ blocked,
+# ✓ done and not looked at, … working, a dim ✓ done and seen). A session row
+# is its name in bold and a rule; windows and panes hang under it as a tree
+# (├─ └─). Window rows show their active pane: the role, the agent's
+# state (or the program), and Claude's conversation title (or the directory).
+# Each window and pane row ends with session:window[.pane] dimmed, so typing a
+# session name also finds what's under it (fzf can't search hidden fields).
+pick_rows() {
+    tmux list-panes -a -F "#{session_id}$tab#{session_name}$tab#{session_windows}$tab#{window_id}$tab#{window_index}$tab#{p24:#{=24:window_name}}$tab#{window_panes}$tab#{p16:#{?#{==:#{@role},orchestrator},◆ orchestrator,#{?#{@task},task,}}}$tab#{pane_id}$tab#{pane_index}$tab#{pane_active}$tab#{p8:#{=8:#{?$live,#{?#{@agent_state},#{@agent_state},idle},#{pane_current_command}}}}$tab$title$tab#{b:pane_current_path}$tab$live_state$tab#{@agent_seen}" |
+        awk -F'\t' '
+        function rank(st, seen) { return st == "blocked" ? 4 : st == "done" && seen == "" ? 3 : st == "working" ? 2 : st == "done" ? 1 : 0 }
+        function rule(k,  t) { t = ""; while (k-- > 0) t = t "─"; return t }
+        function icon(r) { return r == 4 ? "\033[31m⚠\033[0m" : r == 3 ? "\033[32m✓\033[0m" : r == 2 ? "\033[33m…\033[0m" : r == 1 ? "\033[2m✓\033[0m" : " " }
+        # Rows wait for their window, and windows for their session, to learn
+        # the most urgent state; \001 marks where its icon goes.
+        function flushw(i) {
+            if (w == "") return
+            sub(/\001/, icon(wr), row); body = body row "\n"
+            for (i = 1; i <= n; i++) body = body panes[i] "\n"
+            if (wr > sr) sr = wr
+            w = ""; n = 0; wr = 0
+        }
+        function flushs() {
+            flushw()
+            if (s == "") return
+            sub(/\001/, icon(sr), shead); printf "%s\n%s", shead, body
+            body = ""; sr = 0
+        }
+        {
+            r = rank($15, $16)
+            sub(/^[^[:alnum:]]+ /, "", $13)
+            info = sprintf("%s %s", $12, ($13 != "" ? $13 : $14))
+            if ($1 != s) {
+                flushs(); s = $1; nw = 0
+                shead = sprintf("%s\t\001 \033[1m%s\033[0m \033[2m%s %d window%s\033[0m", $1, $2, rule(40 - length($2)), $3, ($3 == 1 ? "" : "s"))
+            }
+            if ($4 != w) {
+                flushw(); w = $4; np = 0; lastw = (++nw == $3)
+                head = sprintf("%s\t\001 %s %-3s %s %s ", $4, (lastw ? "└─" : "├─"), $5, $6, $8)
+            }
+            if (r > wr) wr = r
+            tag = sprintf("  \033[2m%s:%s\033[0m", $2, $5)
+            if ($11 == 1) row = head " " info tag
+            if ($7 > 1) panes[++n] = sprintf("%s\t%s %s%s %-43s %s  \033[2m%s:%s.%s\033[0m", $9, icon(r), (lastw ? "   " : "│  "), (++np == $7 ? "└─" : "├─"), "." $10, info, $2, $5, $10)
+        }
+        END { flushs() }'
+}
+
+# ── commands ────────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+up)
+    [ -s "$open" ] || exit 0
+    # One at a time: the first session this creates starts the server, whose
+    # config runs tt up as well. A lock left by a killed run expires.
+    find "$lock" -maxdepth 0 -mmin +2 -exec rmdir {} \; 2>/dev/null || true
+    mkdir "$lock" 2>/dev/null || exit 0
+    trap 'rmdir "$lock" 2>/dev/null' EXIT
+    mapfile -t records < <(fields <"$open")
+    for r in "${records[@]}"; do
+        IFS=$us read -r sname kind repo role task cwd wname id <<<"$r"
+        # Already open, or gone since (an archived worktree).
+        tmux list-panes -a -F '#{@agent_session}' 2>/dev/null | grep -qxF "$id" && continue
+        [ -n "$task" ] && mux_tasks | cut -f2 | grep -qxF "$cwd" && continue
+        [ -d "$cwd" ] || continue
+        if [ "$kind" = agent ] && [ -d "$repo" ]; then
+            s=$(mux_project "$repo")
+            if [ -z "$s" ]; then
+                p=$(mux_create_project "$repo")
+                s=$(mux_project "$repo")
+                # The new session's own orch takes the first orchestrator; with
+                # none recorded, it resumes the newest conversation, as tt proj does.
+                if [ "$role" != orchestrator ]; then mux_run "$p" "$(agent_cmd "$repo" resume '')"; p=; fi
+            else
+                p=
+            fi
+            if [ -z "$p" ]; then
+                case $role in
+                orchestrator) p=$(mux_create_orch "$s" "$repo") ;;
+                *) if [ -n "$task" ]; then p=$(mux_create_task "$s" "$cwd" "$task")
+                   else p=$(tmux new-window -d -P -F '#{pane_id}' -t "$s:" -c "$cwd"); fi ;;
+                esac
+            fi
+        elif tmux has-session -t "=$sname" 2>/dev/null; then
+            p=$(tmux new-window -d -P -F '#{pane_id}' -t "=$sname:" -c "$cwd")
+        else
+            p=$(tmux new-session -d -P -F '#{pane_id}' -s "$sname" -c "$cwd")
+        fi
+        [ -z "$wname" ] || tmux rename-window -t "$p" "$wname"
+        # Tagged now, not when claude's hook says so seconds later: another
+        # tt up meanwhile would open it twice.
+        tmux set -p -t "$p" @agent_session "$id"
+        mux_run "$p" "claude --resume $id"
+    done
+    # Run from a terminal outside tmux: attach to what came back.
+    if [ -z "${TMUX:-}" ] && [ -t 0 ] && tmux has-session 2>/dev/null; then
+        rmdir "$lock" && trap - EXIT
+        exec tmux attach
+    fi
+    ;;
+proj)
+    dir=${2:-$PWD}
+    root=$(repo_root "$dir") || die "$dir is not in a git repo"
+    s=$(project "$root")
+    # After a reboot or a closed window: a window, resuming its conversation,
+    # for every worktree without one.
+    while read -r path; do
+        [ -d "$path" ] || continue
+        mux_tasks | cut -f2 | grep -qxF "$path" && continue
+        open_task "$root" "$path" "$(agent_cmd "$path" resume '')" >/dev/null
+    done < <(linked_worktrees "$root")
+    mux_focus "$s"
+    ;;
+new)
+    shift
+    prompt=
+    while getopts p: opt; do
+        case $opt in p) prompt=$OPTARG ;; *) exit 2 ;; esac
+    done
+    shift $((OPTIND - 1))
+    branch=${1:-} base=${2:-}
+    [ -n "$branch" ] || read -rp 'branch: ' branch
+    [ -n "$branch" ] || exit 0
+    root=$(repo_root .) || die "not in a git repo"
+    path=$(worktree_path "$root" "$branch")
+    [ -e "$path" ] && die "$path already exists"
+    if git -C "$root" show-ref -q --verify "refs/heads/$branch"; then
+        git -C "$root" worktree add -q "$path" "$branch"
+    else
+        if [ -z "$base" ]; then
+            # The default branch as the remote has it now. Never prompts, so an
+            # agent running this can't hang on a password.
+            base=$(git -C "$root" rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=HEAD
+            [ "$base" = HEAD ] || GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' \
+                git -C "$root" fetch -q origin "${base#origin/}" 2>/dev/null || true
+        fi
+        # --no-track: the new branch's upstream isn't the base, so a bare
+        # `git push` can't land on main.
+        git -C "$root" worktree add -q --no-track -b "$branch" "$path" "$base"
+    fi
+    pane=$(open_task "$root" "$path" "$(agent_cmd "$path" new "$prompt")")
+    # A person who started it from a terminal goes there; an agent's hand-off stays in the background.
+    if [ -t 0 ] && [ -n "${TMUX:-}" ]; then mux_focus "$pane"; fi
+    # For whoever handed the task off, to follow it with tt read.
+    echo "$pane"
+    ;;
+_archive-rows)
+    rows "${2:-}"
+    ;;
+archive)
+    shift
+    if [ $# -eq 0 ]; then
+        [ -n "$(mux_tasks)" ] || die "no tasks"
+        # The rows show at once; statuses (about a second each, gh and git
+        # status in parallel) replace them when ready. --id-nth keeps what's
+        # selected across the reload.
+        keys='tab: select  ctrl-a: all  enter: archive'
+        mapfile -t picked < <(rows | fzf --multi --with-nth=2.. --delimiter='\t' --id-nth=1 \
+            --bind=ctrl-a:toggle-all --header="$keys  (loading status…)" \
+            --bind="start:reload-sync($(printf %q "$0") _archive-rows --status)+change-header($keys)" \
+            --preview="$(printf %q "$0") _preview {1}" --preview-window=right,50%,follow | cut -f1)
+        set -- "${picked[@]}"
+    fi
+    rc=0 i=0
+    for w; do archive "$w" "$((++i))/$#" || rc=1; done
+    exit $rc
+    ;;
+archived)
+    [ -s "$log" ] || { echo "nothing archived"; exit 0; }
+    awk -F'\t' '{ n = split($2, r, "/"); printf "%s  %-14s %-28s %s\n", $1, r[n], $3, $6 }' "$log"
+    ;;
+restore)
+    shift
+    prompt=
+    while getopts p: opt; do
+        case $opt in p) prompt=$OPTARG ;; *) exit 2 ;; esac
+    done
+    shift $((OPTIND - 1))
+    [ -s "$log" ] || die "nothing archived"
+    if [ -n "${1:-}" ]; then
+        # The newest entry whose branch carries the key (e.g. NUX-392) as a whole segment.
+        n=$(awk -F'\t' -v k="${1,,}" 'tolower($3) ~ ("(^|[/-])" k "(-|$)") { n = NR } END { print n }' "$log")
+        [ -n "$n" ] || die "nothing archived matches $1"
+    else
+        n=$(awk -F'\t' '{ k = split($2, r, "/"); printf "%d\t%s  %-14s %-28s %s\n", NR, $1, r[k], $3, $6 }' "$log" |
+            fzf --tac --no-sort --with-nth=2.. --delimiter='\t' --query="$(repo_query)" | cut -f1) || exit 0
+    fi
+    IFS=$us read -r _ repo branch path session _ < <(sed -n "${n}p" "$log" | fields)
+    git -C "$repo" worktree add -q "$path" "$branch"
+    cmd="claude${session:+ --resume $session}$(prompt_arg "$prompt")"
+    pane=$(open_task "$repo" "$path" "$cmd")
+    log_drop "$n"
+    if [ -t 0 ] && [ -n "${TMUX:-}" ]; then mux_focus "$pane"; fi
+    echo "$pane"
+    ;;
+places)
+    [ -n "${2:-}" ] || die "places needs a ticket key, path or repo name"
+    places "$2" | column -t -s"$tab" || die "no place for $2"
+    ;;
+send)
+    pane=${2:-} handoff=${3:-}
+    [ -n "$pane" ] && [ -n "$handoff" ] || die "send needs a pane and a hand-off"
+    info=$(tmux display -p -t "$pane" "#{@agent}$us#{@agent_state}$us#{pane_current_command}$us#{pane_current_path}" 2>/dev/null) ||
+        die "no pane $pane"
+    IFS=$us read -r agent state cmd cwd <<<"$info"
+    [ "$cmd" = "$agent" ] || agent=
+    if [ -z "$agent" ]; then
+        case $cmd in bash | zsh | fish | sh | dash | ksh) ;; *) die "$pane is running $cmd, not a shell; nothing sent" ;; esac
+        mux_run "$pane" "$(agent_cmd "$cwd" new "$handoff")"
+        echo "$pane: started claude"
+        exit 0
+    fi
+    case $state in
+    blocked) die "$pane is waiting on you; nothing sent" ;;
+    working) mux_send "$pane" "$handoff"; echo "$pane: queued (it's working)" ;;
+    *) mux_send "$pane" "$handoff"; echo "$pane: sent" ;;
+    esac
+    ;;
+read)
+    [ -n "${2:-}" ] || die "read needs a pane"
+    # -J joins wrapped lines; -S starts that many lines back in the scrollback.
+    tmux capture-pane -p -J -t "$2" -S "-${3:-200}" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+    ;;
+pick)
+    self=$(printf %q "$0")
+    keys='enter: go  ctrl-x: kill this row  ctrl-s: kill its session'
+    live pick
+    target=$(pick_rows | fzf "${live_opts[@]}" --ansi --no-sort --with-nth=2.. --delimiter='\t' --header="$keys" \
+        --bind="ctrl-x:execute($self _kill row {1})+reload($self _pick-rows)" \
+        --bind="ctrl-s:execute($self _kill session {1})+reload($self _pick-rows)" \
+        --preview="$self _preview {1}" --preview-window=right,50%,follow | cut -f1) || exit 0
+    mux_focus "$target"
+    ;;
+_pick-rows)
+    pick_rows
+    ;;
+_preview)
+    # The row's pane as it looks now, without the blank lines below the last
+    # output, so following the end shows the latest of it. A session shows its
+    # active window; a window split into several panes shows each of them
+    # stacked, the tail of each under a tag naming it, like the tree does.
+    capture() {
+        tmux capture-pane -ep -t "$1" 2>/dev/null |
+            awk '{ t = $0; gsub(/\033\[[0-9;]*m|[[:space:]]/, "", t) }
+                 t == "" { b++; next } { for (; b > 0; b--) print ""; print }'
+    }
+    if [[ $2 == %* ]] || [ "$(tmux display -p -t "$2" '#{window_panes}' 2>/dev/null)" -le 1 ]; then
+        capture "$2"
+        exit 0
+    fi
+    mapfile -t panes < <(tmux list-panes -t "$2" -F "#{pane_id}$tab#{session_name}:#{window_index}.#{pane_index}$tab#{?$live,#{?#{@agent_state},#{@agent_state},idle},#{pane_current_command}}$tab#{b:pane_current_path}$tab#{pane_active}")
+    rows=${FZF_PREVIEW_LINES:-40} cols=${FZF_PREVIEW_COLUMNS:-80}
+    each=$(( rows / ${#panes[@]} - 1 ))
+    (( each < 1 )) && each=1
+    for p in "${panes[@]}"; do
+        IFS=$tab read -r id name what dir active <<<"$p"
+        tag=" $name  $what  $dir "
+        [ "$active" = 1 ] && tag+=" ◀ active "
+        printf '\033[7m%-*.*s\033[0m\n' "$cols" "$cols" "$tag"
+        mapfile -t out < <(capture "$id" | tail -n "$each")
+        (( ${#out[@]} )) && printf '%s\033[0m\n' "${out[@]}"
+        for (( i = ${#out[@]}; i < each; i++ )); do echo; done
+    done
+    ;;
+_kill)
+    # kill-window and kill-session, not the tree's x: in tmux 3.8, x on the
+    # session the tree runs in crashes the server.
+    # The row's own kind comes from its id: $ session, @ window, % pane.
+    target=$3
+    [ "$2" = session ] && target=$(tmux display -p -t "$target" '#{session_id}')
+    case $target in
+    \$*) what=session fmt='#{session_name}' ;;
+    @*) what=window fmt='#{session_name}:#{window_index} #{window_name}' ;;
+    *) what=pane fmt='#{session_name}:#{window_index}.#{pane_index}' ;;
+    esac
+    read -rp "kill $what $(tmux display -p -t "$target" "$fmt")? [y/N] " answer </dev/tty
+    [ "$answer" = y ] && tmux "kill-$what" -t "$target"
+    exit 0
+    ;;
+_notify)
+    notify
+    ;;
+orch)
+    case ${2:-} in
+    new)
+        # A new orchestrator in the repo's main checkout, claude started fresh.
+        root=$(repo_root "${3:-.}") || die "not in a git repo"
+        s=$(project "$root")
+        pane=$(mux_create_orch "$s" "$root")
+        mux_run "$pane" "$(agent_cmd "$root" new '')"
+        # From a key binding (run-shell) there is no tty: the client is named.
+        if [ -n "${4:-}" ]; then tmux switch-client -c "$4" -t "$pane" \; select-window -t "$pane"
+        elif [ -t 0 ] && [ -n "${TMUX:-}" ]; then mux_focus "$pane"; fi
+        echo "$pane"
+        ;;
+    *)
+        # The next orchestrator window after the current one, wrapping around.
+        mapfile -t orchs < <(mux_orchs "${2:-}")
+        [ ${#orchs[@]} -gt 0 ] || exit 0
+        next=${orchs[0]}
+        for i in "${!orchs[@]}"; do
+            [ "${orchs[$i]}" = "${3:-}" ] && [ $((i + 1)) -lt ${#orchs[@]} ] && next=${orchs[$((i + 1))]}
+        done
+        tmux select-window -t "$next"
+        ;;
+    esac
+    ;;
+count)
+    tmux list-panes -a -F "$live_state#{@agent_seen}" 2>/dev/null |
+        awk '$0 == "blocked" || $0 == "blocked1" { b++ } $0 == "done" { d++ }
+             END { if (b) printf "⚠%d ", b; if (d) printf "✓%d ", d }'
+    ;;
+state)
+    new=${2:-} agent=${3:-claude}
+    IFS=$us read -r sid source < <(jq -r '[.session_id // "", .source // ""] | join("\u001f")' 2>/dev/null) || true
+    case $new in start) record "$agent" idle "$sid" ;; working | done | blocked | clear) record "$agent" "$new" "$sid" ;; esac
+    # Run by the agent's hooks, which inherit $TMUX_PANE: outside tmux, nothing to tag.
+    [ -n "${TMUX_PANE:-}" ] || exit 0
+    IFS=$us read -r cur cur_state visible < <(tmux display -p -t "$TMUX_PANE" \
+        "#{@agent_session}$us#{@agent_state}$us#{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}")
+    p=(-p -t "$TMUX_PANE")
+    if [ "$new" = start ]; then
+        # A fresh start claims the pane only when no agent holds it, or it holds
+        # the terminal itself (tags a killed agent left behind): claude -p run
+        # from inside the agent starts a session too. /clear and /resume switch it.
+        [ -z "$cur" ] || [ "$source" != startup ] || holds_terminal "$agent" || exit 0
+        tmux set "${p[@]}" @agent "$agent" \; set "${p[@]}" @agent_session "$sid" \; \
+            set -u "${p[@]}" @agent_state \; set -u "${p[@]}" @agent_seen
+        save
+        notify
+        exit 0
+    fi
+    # Events from any other session in this pane are someone else's.
+    [ -z "$cur" ] || [ -z "$sid" ] || [ "$cur" = "$sid" ] || exit 0
+    case $new in
+    clear)
+        tmux set -u "${p[@]}" @agent \; set -u "${p[@]}" @agent_session \; set -u "${p[@]}" @agent_state \; \
+            set -u "${p[@]}" @agent_seen
+        ;;
+    working | done | blocked)
+        [ "$new" = "$cur_state" ] && exit 0
+        # Seen right away when someone is looking at the pane.
+        if [ "$visible" = 1 ]; then seen=(set "${p[@]}" @agent_seen 1); else seen=(set -u "${p[@]}" @agent_seen); fi
+        tmux set "${p[@]}" @agent "$agent" \; set "${p[@]}" @agent_state "$new" \; "${seen[@]}"
+        save
+        ;;
+    *) die "state is start, working, done, blocked or clear" ;;
+    esac
+    notify
+    ;;
+*)
+    sed -n '5,25s/^# \{0,1\}//p' "$0" >&2
+    exit 2
+    ;;
+esac
