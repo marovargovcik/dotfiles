@@ -15,6 +15,11 @@ bin/**
 !bin/.local/bin/usb-status
 !bin/.local/bin/wg-menu
 !bin/.local/bin/wg-status
+!bin/.local/lib/
+!bin/.local/lib/**
+!bin/test/
+!bin/test/**
+!bin/.stow-local-ignore
 
 fuzzel/.config/fuzzel/applications/
 

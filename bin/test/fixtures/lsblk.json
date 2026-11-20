@@ -1,0 +1,18 @@
+{
+  "blockdevices": [
+    {"name": "nvme0n1", "type": "disk", "tran": "nvme", "fstype": null, "label": null, "size": "476.9G", "mountpoint": null, "vendor": null, "model": "WD PC SN740",
+     "children": [
+       {"name": "nvme0n1p1", "type": "part", "tran": "nvme", "fstype": "vfat", "label": null, "size": "1G", "mountpoint": "/boot/efi", "vendor": null, "model": null}
+     ]},
+    {"name": "sda", "type": "disk", "tran": "usb", "fstype": null, "label": null, "size": "28.7G", "mountpoint": null, "vendor": "SanDisk ", "model": "Ultra_Fit",
+     "children": [
+       {"name": "sda1", "type": "part", "tran": null, "fstype": "vfat", "label": "STICK", "size": "20G", "mountpoint": "/run/media/me/STICK", "vendor": null, "model": null},
+       {"name": "sda2", "type": "part", "tran": null, "fstype": "ext4", "label": null, "size": "8.7G", "mountpoint": null, "vendor": null, "model": null},
+       {"name": "sda3", "type": "part", "tran": null, "fstype": "swap", "label": null, "size": "1G", "mountpoint": null, "vendor": null, "model": null}
+     ]},
+    {"name": "sdb", "type": "disk", "tran": "usb", "fstype": null, "label": null, "size": "64G", "mountpoint": null, "vendor": "Generic", "model": "Flash_Disk",
+     "children": [
+       {"name": "sdb1", "type": "part", "tran": null, "fstype": "crypto_LUKS", "label": null, "size": "64G", "mountpoint": null, "vendor": null, "model": null}
+     ]}
+  ]
+}

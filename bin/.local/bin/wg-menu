@@ -1,27 +1,36 @@
 #!/bin/bash
+# fuzzel menu for WireGuard: picks a tunnel of ~/.config/wireguard and brings
+# it up, or down when it's connected.
+
+dir=$HOME/.config/wireguard
 active=$(sudo wg show interfaces 2>/dev/null | tr ' ' '\n')
 
-items=()
-for conf in "$HOME/.config/wireguard/"*.conf; do
-    [ -f "$conf" ] || continue
-    name=$(basename "$conf" .conf)
-    if echo "$active" | grep -qx "$name"; then
-        items+=("[connected] $name")
-    else
-        items+=("$name")
-    fi
-done
+# connected <tunnel>: whether the tunnel is up.
+connected() { echo "$active" | grep -qx "$1"; }
 
-[ ${#items[@]} -eq 0 ] && exit 0
+# entries: a line per tunnel, "[connected]" before each one that's up.
+entries() {
+    local conf name
+    for conf in "$dir/"*.conf; do
+        [ -f "$conf" ] || continue
+        name=$(basename "$conf" .conf)
+        if connected "$name"; then
+            echo "[connected] $name"
+        else
+            echo "$name"
+        fi
+    done
+}
 
-selected=$(printf '%s\n' "${items[@]}" | fuzzel -d --no-exit-on-keyboard-focus-loss)
+items=$(entries)
+[ -n "$items" ] || exit 0
+
+selected=$(fuzzel -d --no-exit-on-keyboard-focus-loss <<<"$items")
 [ -z "$selected" ] && exit 0
-
 tunnel=${selected#\[connected\] }
-conf="$HOME/.config/wireguard/$tunnel.conf"
 
-if echo "$active" | grep -qx "$tunnel"; then
-    sudo wg-quick down "$conf"
+if connected "$tunnel"; then
+    sudo wg-quick down "$dir/$tunnel.conf"
 else
-    sudo wg-quick up "$conf"
+    sudo wg-quick up "$dir/$tunnel.conf"
 fi

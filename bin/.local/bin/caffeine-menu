@@ -10,35 +10,36 @@
 # While caffeine-agents holds its own inhibitor, a first line says so and
 # explains the bar's robot; picking it changes nothing.
 
-state="$XDG_RUNTIME_DIR/caffeine"
+src=$(realpath "${BASH_SOURCE[0]}")
+lib=${src%/*}/../lib/caffeine
+# shellcheck source=../lib/caffeine/common.sh
+source "$lib/common.sh"
+
 agents=$'\U000F06A9 agents working: awake until they finish'
 
-choice=$(
+# choose: the line picked in fuzzel, or nothing.
+choose() {
     {
-        elogind-inhibit --list --no-legend | grep -q '^agents ' && printf '%s\n' "$agents"
+        agents_awake && printf '%s\n' "$agents"
         printf '%s\n' off indefinitely '5 min' '10 min' '15 min' '30 min' '60 min'
     } | fuzzel -d --no-exit-on-keyboard-focus-loss
-)
-case "$choice" in
-'' | "$agents") exit 0 ;;
-off) secs= ;;
-indefinitely) secs=infinity ;;
-*) secs=$((${choice% min} * 60)) ;;
-esac
+}
 
-# A new choice replaces the running one. The cmdline check skips a pid that
-# has since been reused by something else.
-read -r pid _ 2>/dev/null <"$state" && grep -qs caffeine "/proc/$pid/cmdline" &&
-    kill -- "-$pid" 2>/dev/null
-rm -f "$state"
+# stop: ends the running timer, if any.
+stop() {
+    local pid _
+    read -r pid _ < <(timer) && kill -- "-$pid" 2>/dev/null
+    rm -f "$state"
+}
 
-if [ -n "$secs" ]; then
-    until=0
-    [ "$secs" = infinity ] || until=$((EPOCHSECONDS + secs))
-    # setsid gives it its own process group, so off kills the wait along with
-    # the inhibitor. The wait checks the wall clock at least once a minute
-    # because sleep stops counting while suspended. When the time runs out it
-    # refreshes the bar itself.
+# start <seconds|infinity>: a timer holding off sleep for that long, recorded
+# in $state. setsid gives it its own process group, so stop kills the wait
+# along with the inhibitor. The wait checks the wall clock at least once a
+# minute because sleep stops counting while suspended. When the time runs out
+# it refreshes the bar itself.
+start() {
+    local until=0
+    [ "$1" = infinity ] || until=$((EPOCHSECONDS + $1))
     # shellcheck disable=SC2016 # the inner shells expand them
     setsid sh -c 'elogind-inhibit --what=sleep --who=caffeine --why=caffeine sh -c '\''
                       [ "$1" -eq 0 ] && exec sleep infinity
@@ -47,6 +48,17 @@ if [ -n "$secs" ]; then
                       done'\'' sh "$1"
                   pkill -RTMIN+9 -x i3status-rs' sh "$until" </dev/null >/dev/null 2>&1 &
     echo "$! $until" >"$state"
-fi
+}
 
-pkill -RTMIN+9 -x i3status-rs
+choice=$(choose)
+case "$choice" in
+'' | "$agents") exit 0 ;;
+off) secs= ;;
+indefinitely) secs=infinity ;;
+*) secs=$((${choice% min} * 60)) ;;
+esac
+
+# A new choice replaces the running one.
+stop
+[ -z "$secs" ] || start "$secs"
+refresh_bar

@@ -12,10 +12,14 @@ stylua = "2.6.0"
 description = "Run the pre-commit checks on every file"
 run = "lefthook run pre-commit --all-files"
 
+[tasks.test]
+description = "Run the scripts' tests"
+run = "bats */test"
+
 [tasks.fmt]
 description = "Apply the formatters"
 run = """
-shfmt -w bash/.bash* */.local/bin/* lf/.config/lf/preview $(git ls-files '*.sh')
+shfmt -w bash/.bash* */.local/bin/* lf/.config/lf/preview $(git ls-files '*.sh') */test/*.bats */test/*.bash
 rumdl fmt $(git ls-files '*.md')
 taplo fmt $(git ls-files '*.toml')
 stylua $(git ls-files '*.lua')

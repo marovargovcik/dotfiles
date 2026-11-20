@@ -1,2 +1,6 @@
-# Sourced files are system paths outside this repo.
+# Follows each script's `source`, looking next to the script, so that a sourced
+# file's functions and variables are checked where they're used.
+source-path=SCRIPTDIR
+external-sources=true
+# Other sourced files are system paths outside this repo.
 disable=SC1091

@@ -7,19 +7,20 @@
 # which signals i3status-rs; the block's interval is only a safety net.
 #
 # lsblk -J hands over the device tree and jq writes the block's JSON, so labels
-# on a stranger's USB stick are escaped by jq, never pasted in by hand. lsblk
-# fills TRAN on the disk but leaves it empty on its partitions for USB (unlike
-# nvme, where it propagates), so devs() carries the transport down the tree.
+# on a stranger's USB stick are escaped by jq, never pasted in by hand.
+# ../lib/usb/devices.jq picks the USB devices out of the tree.
 #
 # Always valid JSON, empty text when there is nothing to show: hide_when_empty
 # then drops the block. Printing *nothing* here does not hide it — the block
 # flips to "Invalid JSON" a few seconds in, once the empty parse surfaces. Hence
 # the fallback to no devices when lsblk prints nothing.
 
-lsblk -J -o NAME,TYPE,TRAN,FSTYPE,LABEL,MOUNTPOINT | jq -nc '
-    def devs(t): (.tran // t) as $t | (.tran = $t), (.children[]? | devs($t));
-    [[inputs][0].blockdevices // [] | .[] | devs(null)
-     | select(.tran == "usb")                # add "mmc" here to cover the SD slot
+src=$(realpath "${BASH_SOURCE[0]}")
+lib=${src%/*}/../lib/usb
+
+lsblk -J -o NAME,TYPE,TRAN,FSTYPE,LABEL,MOUNTPOINT | jq -nc -L "$lib" '
+    include "devices";
+    [usb_devices
      | select(.type == "part" or .type == "disk")
      | select(.fstype | IN(null, "swap", "linux_raid_member", "LVM2_member", "crypto_LUKS") | not)]
     | if length == 0 then {text: ""}

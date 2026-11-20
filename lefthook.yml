@@ -10,11 +10,21 @@ pre-commit:
         - "**/*.sh"
         - "lf/.config/lf/preview"
         - "bash/.bash*"
+        - "*/test/*.bats"
+        - "*/test/*.bash"
       run: shellcheck {staged_files}
 
     - name: shfmt
       glob: *shell
       run: shfmt -d {staged_files}
+
+    # The whole suite: a lib or fixture change can break any script's tests.
+    - name: bats
+      glob:
+        - "tmux/**"
+        - "bin/**"
+        - "lf/**"
+      run: bats */test
 
     - name: rumdl
       glob: "**/*.md"

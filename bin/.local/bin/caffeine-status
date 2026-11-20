@@ -3,17 +3,26 @@
 # while the timer holds off sleep, with the minutes left when there is a limit,
 # a robot while agents do, both when both do; an empty cup otherwise.
 
-state="$XDG_RUNTIME_DIR/caffeine"
+src=$(realpath "${BASH_SOURCE[0]}")
+lib=${src%/*}/../lib/caffeine
+# shellcheck source=../lib/caffeine/common.sh
+source "$lib/common.sh"
 
-# The cmdline check skips a pid that has since been reused by something else.
-text=
-if read -r pid until 2>/dev/null <"$state" && grep -qs caffeine "/proc/$pid/cmdline" &&
-    { [ "$until" -eq 0 ] || [ "$until" -gt "$EPOCHSECONDS" ]; }; then
-    text=$'\U000F0176'
-    [ "$until" -eq 0 ] || text+=" $(((until - EPOCHSECONDS + 59) / 60))m"
-fi
-elogind-inhibit --list --no-legend | grep -q '^agents ' &&
-    text=$'\U000F06A9'"${text:+ $text}"
+# timer_text: the full cup, with the minutes left when there is a limit; nothing
+# once the time is up.
+timer_text() {
+    local pid until
+    read -r pid until < <(timer) || return 0
+    [ "$until" -eq 0 ] || [ "$until" -gt "$EPOCHSECONDS" ] || return 0
+    if [ "$until" -eq 0 ]; then
+        printf '\U000F0176\n'
+    else
+        printf '\U000F0176 %dm\n' $(((until - EPOCHSECONDS + 59) / 60))
+    fi
+}
+
+text=$(timer_text)
+agents_awake && text=$'\U000F06A9'"${text:+ $text}"
 
 if [ -n "$text" ]; then
     printf '{"text":"%s","state":"Good"}\n' "$text"

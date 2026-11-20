@@ -150,6 +150,7 @@ sudo xbps-install -S \
   snapper-rollback grub-btrfs cronie chrony socklog-void tlp fwupd \
   git git-lfs github-cli mise uv neovim gcc starship bash-completion fzf fd ripgrep zoxide eza bat delta \
   lazygit tmux ncurses-term lf chafa poppler-utils firefox ffmpeg curl jq lsof stow unzip \
+  bats bats-support bats-assert \
   podman podman-compose podman-tui aardvark-dns
 ```
 
@@ -233,7 +234,7 @@ sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 maro
 ```sh
 git clone https://github.com/marovargovcik/dotfiles ~/dotfiles
 rm ~/.bash_profile ~/.bashrc                        # /etc/skel copies block the symlinks
-mkdir -p ~/.ssh ~/.local/bin ~/.local/share ~/.local/state ~/.config/gh ~/.config/containers ~/.claude
+mkdir -p ~/.ssh ~/.local/bin ~/.local/lib ~/.local/share ~/.local/state ~/.config/gh ~/.config/containers ~/.claude
 cd ~/dotfiles && stow */
 ```
 
