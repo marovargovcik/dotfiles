@@ -17,3 +17,8 @@ bin/**
 !bin/.local/bin/wg-status
 
 fuzzel/.config/fuzzel/applications/
+
+gh/**
+!gh/.config/
+!gh/.config/gh/
+!gh/.config/gh/config.yml
