@@ -7,6 +7,8 @@ stylua = "2.6.0"
 "aqua:Kampfkarren/selene" = "0.32.0"
 # github:, not the registry entry: aqua still looks for the pre-4.0 asset name.
 "github:editorconfig-checker/editorconfig-checker" = "4.0.2"
+actionlint = "1.7.12"
+zizmor = "1.32.0"
 
 [tasks.lint]
 description = "Run the pre-commit checks on every file"

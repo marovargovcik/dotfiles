@@ -13,10 +13,12 @@ pre-commit:
         - "*/test/*.bats"
         - "*/test/*.bash"
       run: shellcheck {staged_files}
+      fail_text: "Fix what ShellCheck reports, or disable the check on that line with a comment that says why"
 
     - name: shfmt
       glob: *shell
       run: shfmt -d {staged_files}
+      fail_text: "Fix with: shfmt -w <file>"
 
     # The whole suite: a lib or fixture change can break any script's tests.
     - name: bats
@@ -25,22 +27,27 @@ pre-commit:
         - "bin/**"
         - "lf/**"
       run: bats */test
+      fail_text: "Fix the script or its test by hand, then rerun: mise run test"
 
     - name: rumdl
       glob: "**/*.md"
       run: rumdl check {staged_files} && rumdl fmt --check {staged_files}
+      fail_text: "Fix with: rumdl fmt <file>, then by hand whatever rumdl check still reports"
 
     - name: taplo
       glob: "**/*.toml"
       run: taplo lint {staged_files} && taplo fmt --check {staged_files}
+      fail_text: "Fix with: taplo fmt <file>, then by hand whatever taplo lint still reports"
 
     - name: stylua
       glob: "**/*.lua"
       run: stylua --check {staged_files}
+      fail_text: "Fix with: stylua <file>"
 
     - name: selene
       glob: "**/*.lua"
       run: selene {staged_files}
+      fail_text: "Fix what selene reports by hand"
 
     - name: yamlfmt
       glob: "**/*.yml"
@@ -48,45 +55,66 @@ pre-commit:
       exclude:
         - "gh/.config/gh/config.yml"
       run: yamlfmt -lint {staged_files}
+      fail_text: "Fix with: yamlfmt <file>"
+
+    - name: actionlint
+      glob: ".github/workflows/*"
+      run: actionlint {staged_files}
+      fail_text: "Fix what actionlint reports by hand"
+
+    - name: zizmor
+      glob: ".github/workflows/*"
+      run: zizmor --offline {staged_files}
+      fail_text: "Fix what zizmor reports by hand"
 
     - name: json
       glob: "**/*.json"
       run: jq empty {staged_files}
+      fail_text: "Fix the JSON by hand"
 
     - name: typos
       file_types: text
       run: typos {staged_files}
+      fail_text: "Fix with: typos -w <file>, or add a false positive to .typos.toml"
 
     - name: editorconfig
       file_types: text
       # Indent width is left to the formatters; heredocs and continuation lines
       # would trip it.
       run: editorconfig-checker -disable-indent-size {staged_files}
+      fail_text: "Fix what editorconfig-checker reports by hand"
 
     - name: gitleaks
-      run: gitleaks git --pre-commit --staged --no-banner
+      run: gitleaks git --pre-commit --staged --no-banner --redact --verbose
+      fail_text: "Remove the secret (rotate it if it was pushed), or mark a false positive with gitleaks:allow"
 
     - name: sway
       glob: "sway/.config/sway/config"
       run: sway -C -c {staged_files}
+      fail_text: "Fix the config by hand"
 
     # Parse only: loading it for real would run its run-shell commands.
     - name: tmux
       glob: "tmux/.config/tmux/tmux.conf"
       run: tmux -L lefthook -f /dev/null start-server \; source-file -n {staged_files}
+      fail_text: "Fix the config by hand"
 
     - name: foot
       glob: "foot/.config/foot/foot.ini"
       run: foot --check-config -c {staged_files}
+      fail_text: "Fix the config by hand"
 
     - name: fuzzel
       glob: "fuzzel/.config/fuzzel/fuzzel.ini"
       run: fuzzel --check-config --config {staged_files}
+      fail_text: "Fix the config by hand"
 
     - name: ssh
       glob: "ssh/.ssh/config"
       run: ssh -G -F {staged_files} check </dev/null >/dev/null
+      fail_text: "Fix the config by hand"
 
     - name: gitconfig
       glob: "git/.gitconfig"
       run: git config -f {staged_files} -l >/dev/null
+      fail_text: "Fix the config by hand"
