@@ -11,6 +11,8 @@ shfmt = "3.14.1"
 gitleaks = "latest"
 yamlfmt = "latest"
 "aqua:quarylabs/sqruff" = "latest"
+shellcheck = "0.11.0"
+yq = "4.54.3"
 
 [env]
 # Claude Code is updated by `mise upgrade`; its own updater would reinstall
