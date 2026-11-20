@@ -17,7 +17,7 @@ done
 selected=$(printf '%s\n' "${items[@]}" | fuzzel -d --no-exit-on-keyboard-focus-loss)
 [ -z "$selected" ] && exit 0
 
-tunnel=$(echo "$selected" | sed 's/^\[connected\] //')
+tunnel=${selected#\[connected\] }
 conf="$HOME/.config/wireguard/$tunnel.conf"
 
 if echo "$active" | grep -qx "$tunnel"; then

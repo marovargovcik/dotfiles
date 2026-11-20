@@ -39,6 +39,7 @@ if [ -n "$secs" ]; then
     # the inhibitor. The wait checks the wall clock at least once a minute
     # because sleep stops counting while suspended. When the time runs out it
     # refreshes the bar itself.
+    # shellcheck disable=SC2016 # the inner shells expand them
     setsid sh -c 'elogind-inhibit --what=sleep --who=caffeine --why=caffeine sh -c '\''
                       [ "$1" -eq 0 ] && exec sleep infinity
                       while left=$(( $1 - $(date +%s) )); [ "$left" -gt 0 ]; do

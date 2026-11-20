@@ -168,12 +168,14 @@ prompt_arg() {
     local f
     f=$(mktemp "${TMPDIR:-/tmp}/tt-handoff.XXXXXX")
     printf %s "$1" >"$f"
+    # shellcheck disable=SC2016 # expanded by the shell that runs the command
     printf ' "$(cat %q && rm %q)"' "$f" "$f"
 }
 
 # Newest Claude Code session started in a directory.
 session_in() {
     local dir=$HOME/.claude/projects/${1//[^A-Za-z0-9]/-} f
+    # shellcheck disable=SC2012 # session files are named by UUID
     f=$(ls -t -- "$dir"/*.jsonl 2>/dev/null | head -1) || true
     [ -n "$f" ] && basename "$f" .jsonl || true
 }
@@ -359,6 +361,7 @@ remove_worktree() {
 # Deletes what archive set aside, detached so it outlives the popup, along with
 # anything an earlier run left behind (older than an hour).
 empty_trash() {
+    # shellcheck disable=SC2016 # the inner sh expands them
     nohup sh -c 'rm -rf "$1"; find "$2" -mindepth 1 -maxdepth 1 -mmin +60 -exec rm -rf {} +' \
         _ "$1" "$trash_root" >/dev/null 2>&1 &
 }

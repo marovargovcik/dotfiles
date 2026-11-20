@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 [[ $- != *i* ]] && return
 
 shopt -s histappend
@@ -20,12 +21,13 @@ set -o vi
 [ -f /usr/share/fzf/completion.bash ] && source /usr/share/fzf/completion.bash
 
 lf() {
-    local tmp="$(mktemp)"
+    local tmp dir
+    tmp=$(mktemp)
     command lf -last-dir-path="$tmp" "$@"
     if [ -f "$tmp" ]; then
-        local dir="$(command cat "$tmp")"
+        dir=$(command cat "$tmp")
         rm -f "$tmp"
-        [ -d "$dir" ] && [ "$dir" != "$PWD" ] && cd "$dir"
+        [ -d "$dir" ] && [ "$dir" != "$PWD" ] && { cd "$dir" || return; }
     fi
 }
 
