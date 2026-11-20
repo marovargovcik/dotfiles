@@ -1,18 +1,18 @@
 [core]
-    pager = delta
+	pager = delta
 
 [interactive]
-    diffFilter = delta --color-only
+	diffFilter = delta --color-only
 
 [delta]
-    navigate = true
-    side-by-side = true
+	navigate = true
+	side-by-side = true
 
 [diff]
-    colorMoved = default
+	colorMoved = default
 
 [merge]
-    conflictstyle = diff3
+	conflictstyle = diff3
 [init]
 	defaultBranch = main
 [push]
@@ -26,8 +26,8 @@
 	process = git-lfs filter-process
 	required = true
 [credential "https://github.com"]
-	helper = 
+	helper =
 	helper = !/usr/bin/gh auth git-credential
 [credential "https://gist.github.com"]
-	helper = 
+	helper =
 	helper = !/usr/bin/gh auth git-credential
