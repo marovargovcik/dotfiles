@@ -275,6 +275,9 @@ gh auth login                                   # git uses its token
 uv tool install basedpyright                    # Python language server for nvim
 git clone https://github.com/tmux-plugins/tpm ~/.local/share/tmux/plugins/tpm   # then prefix+I in tmux installs the plugins
 
+# This repo's lint tools and pre-commit hook (mise.toml, lefthook.yml).
+cd ~/dotfiles && mise trust && mise install && lefthook install && cd
+
 # Apps and websites that ask get "dark".
 gsettings set org.gnome.desktop.interface color-scheme prefer-dark
 

@@ -1,0 +1,8 @@
+std = "lua51+vim"
+
+[lints]
+# .stylua.toml keeps simple ifs on one line.
+multiple_statements = "allow"
+
+[config]
+empty_if = { comments_count = true }

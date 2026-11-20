@@ -1,0 +1,82 @@
+# Checks only, nothing is rewritten: `mise run fmt` applies the formatters.
+glob_matcher: doublestar
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: shellcheck
+      glob: &shell
+        - "*/.local/bin/*"
+        - "**/*.sh"
+        - "lf/.config/lf/preview"
+        - "bash/.bash*"
+      run: shellcheck {staged_files}
+
+    - name: shfmt
+      glob: *shell
+      run: shfmt -d {staged_files}
+
+    - name: rumdl
+      glob: "**/*.md"
+      run: rumdl check {staged_files} && rumdl fmt --check {staged_files}
+
+    - name: taplo
+      glob: "**/*.toml"
+      run: taplo lint {staged_files} && taplo fmt --check {staged_files}
+
+    - name: stylua
+      glob: "**/*.lua"
+      run: stylua --check {staged_files}
+
+    - name: selene
+      glob: "**/*.lua"
+      run: selene {staged_files}
+
+    - name: yamlfmt
+      glob: "**/*.yml"
+      # gh rewrites its own config.yml with 4-space indents.
+      exclude:
+        - "gh/.config/gh/config.yml"
+      run: yamlfmt -lint {staged_files}
+
+    - name: json
+      glob: "**/*.json"
+      run: jq empty {staged_files}
+
+    - name: typos
+      file_types: text
+      run: typos {staged_files}
+
+    - name: editorconfig
+      file_types: text
+      # Indent width is left to the formatters; heredocs and continuation lines
+      # would trip it.
+      run: editorconfig-checker -disable-indent-size {staged_files}
+
+    - name: gitleaks
+      run: gitleaks git --pre-commit --staged --no-banner
+
+    - name: sway
+      glob: "sway/.config/sway/config"
+      run: sway -C -c {staged_files}
+
+    # Parse only: loading it for real would run its run-shell commands.
+    - name: tmux
+      glob: "tmux/.config/tmux/tmux.conf"
+      run: tmux -L lefthook -f /dev/null start-server \; source-file -n {staged_files}
+
+    - name: foot
+      glob: "foot/.config/foot/foot.ini"
+      run: foot --check-config -c {staged_files}
+
+    - name: fuzzel
+      glob: "fuzzel/.config/fuzzel/fuzzel.ini"
+      run: fuzzel --check-config --config {staged_files}
+
+    - name: ssh
+      glob: "ssh/.ssh/config"
+      run: ssh -G -F {staged_files} check </dev/null >/dev/null
+
+    - name: gitconfig
+      glob: "git/.gitconfig"
+      run: git config -f {staged_files} -l >/dev/null

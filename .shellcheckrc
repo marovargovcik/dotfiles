@@ -1,0 +1,2 @@
+# Sourced files are system paths outside this repo.
+disable=SC1091

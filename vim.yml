@@ -1,0 +1,4 @@
+# Neovim's Lua globals, for selene.
+globals:
+  vim:
+    any: true

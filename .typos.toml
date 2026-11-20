@@ -1,0 +1,7 @@
+[default.extend-words]
+# tt's awk: flushw/flushs flush a window/session.
+flushs = "flushs"
+# ALSA's HDA codec, in PipeWire device names.
+hda = "hda"
+# sed's branch command in `N;ba`.
+ba = "ba"

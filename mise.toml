@@ -1,0 +1,23 @@
+# Lint tools this repo needs beyond the global mise config (which already has
+# lefthook, shellcheck, shfmt, rumdl, yamlfmt, gitleaks).
+[tools]
+typos = "1.52.2"
+taplo = "0.10.0"
+stylua = "2.6.0"
+"aqua:Kampfkarren/selene" = "0.32.0"
+# github:, not the registry entry: aqua still looks for the pre-4.0 asset name.
+"github:editorconfig-checker/editorconfig-checker" = "4.0.2"
+
+[tasks.lint]
+description = "Run the pre-commit checks on every file"
+run = "lefthook run pre-commit --all-files"
+
+[tasks.fmt]
+description = "Apply the formatters"
+run = """
+shfmt -w bash/.bash* */.local/bin/* lf/.config/lf/preview $(git ls-files '*.sh')
+rumdl fmt $(git ls-files '*.md')
+taplo fmt $(git ls-files '*.toml')
+stylua $(git ls-files '*.lua')
+yamlfmt $(git ls-files '*.yml' ':!gh/.config/gh/config.yml')
+"""
