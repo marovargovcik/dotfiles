@@ -30,12 +30,12 @@ rule() { printf '─%.0s' $(seq "$1"); }
     run "$tt" _pick-rows
     assert_success
     assert_equal "$(plain <<<"$output" | tr '\t' '|')" "$(tag app session_id)|⚠ app $(rule 37) 2 windows
-$(tag app:0 window_id)|✓ ├─ 0   orch                     ◆ orchestrator    done     app  app:0
-$(tag app:1 window_id)|⚠ └─ 1   task                     task              blocked  Fix the login  app:1
-$task|⚠    ├─ .0                                          blocked  Fix the login  app:1.0
-$shell|     └─ .1                                          bash     app  app:1.1
+$(tag app:0 window_id)|✓ ├─ 0 orch ◆     done     app  app:0
+$(tag app:1 window_id)|⚠ └─ 1 task task  blocked  Fix the login  app:1
+$task|⚠    ├─ .0        blocked  Fix the login  app:1.0
+$shell|     └─ .1        bash     app  app:1.1
 $(tag keep session_id)|  keep $(rule 36) 1 window
-$(tag keep:0 window_id)|  └─ 0   bash                                       bash     home  keep:0"
+$(tag keep:0 window_id)|  └─ 0 bash       bash     home  keep:0"
 }
 
 @test "the icons: red blocked, green done and not looked at, yellow working, dim done and seen" {

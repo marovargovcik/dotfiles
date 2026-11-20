@@ -9,16 +9,16 @@ source "${BASH_SOURCE[0]%/*}/mux.sh"
 # into several (a one-pane window is its pane). Each row starts with its tmux id ($ session, @ window, % pane), then
 # the agent's state as an icon (a session or window takes the most urgent under it: ⚠ blocked, ✓ done and not
 # looked at, … working, a dim ✓ done and seen). A session row is its name in bold and a rule; windows and panes hang
-# under it as a tree (├─ └─). Window rows show their active pane: the role, the agent's state (or the program), and
-# Claude's conversation title (or the directory). Each window and pane row ends with session:window[.pane] dimmed,
+# under it as a tree (├─ └─). Window rows show their active pane: the role (◆ orchestrator, or task), the agent's
+# state (or the program), and Claude's conversation title (or the directory). Columns fit their widest value. Each window and pane row ends with session:window[.pane] dimmed,
 # so typing a session name also finds what's under it (fzf can't search hidden fields).
 pick_rows() {
-    local role='#{?#{==:#{@role},orchestrator},◆ orchestrator,#{?#{@task},task,}}' format
+    local role='#{?#{==:#{@role},orchestrator},◆,#{?#{@task},task,}}' format
     format=$(formats '#{session_id}' '#{session_name}' '#{session_windows}' \
-        '#{window_id}' '#{window_index}' '#{p24:#{=24:window_name}}' '#{window_panes}' "#{p16:$role}" \
-        '#{pane_id}' '#{pane_index}' '#{pane_active}' "#{p8:#{=8:$doing}}" "$title" '#{b:pane_current_path}' \
+        '#{window_id}' '#{window_index}' '#{=24:window_name}' '#{window_panes}' "$role" \
+        '#{pane_id}' '#{pane_index}' '#{pane_active}' "#{=8:$doing}" "$title" '#{b:pane_current_path}' \
         "$live_state" '#{@agent_seen}')
-    tmux list-panes -a -F "$format" | awk -F'\t' -f "${BASH_SOURCE[0]%/*}/pick-rows.awk"
+    tmux list-panes -a -F "$format" | LC_ALL=C awk -F'\t' -f "${BASH_SOURCE[0]%/*}/pick-rows.awk"
 }
 
 # live <kind>: fzf options, in live_opts, for a picker that reloads with tt _<kind>-rows when told to (tt _notify);
@@ -43,15 +43,17 @@ notify() {
     done >/dev/null 2>&1 &
 }
 
-# pick: goes to the row picked: enter goes there, ctrl-x kills that row, ctrl-s the row's whole session.
+# pick: goes to the row picked: enter goes there, ctrl-x kills that row, ctrl-s the row's whole session, ctrl-/ hides
+# or shows the preview. The preview sits below, so the list has the popup's whole width.
 pick() {
-    local self target keys='enter: go  ctrl-x: kill this row  ctrl-s: kill its session'
+    local self target keys='enter: go  ctrl-x: kill this row  ctrl-s: kill its session  ctrl-/: preview'
     self=$(printf %q "$0")
     live pick
     target=$(pick_rows | fzf "${live_opts[@]}" --ansi --no-sort --with-nth=2.. --delimiter='\t' --header="$keys" \
         --bind="ctrl-x:execute($self _kill row {1})+reload($self _pick-rows)" \
         --bind="ctrl-s:execute($self _kill session {1})+reload($self _pick-rows)" \
-        --preview="$self _preview {1}" --preview-window=right,50%,follow | cut -f1) || exit 0
+        --bind=ctrl-/:toggle-preview \
+        --preview="$self _preview {1}" --preview-window=down,50%,follow | cut -f1) || exit 0
     mux_focus "$target"
 }
 
