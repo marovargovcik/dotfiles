@@ -8,7 +8,10 @@
 
 term=foot
 
-fail() { swaynag -t error -m "usb-menu: $1"; exit 1; }
+fail() {
+    swaynag -t error -m "usb-menu: $1"
+    exit 1
+}
 
 # jq walks lsblk's device tree, carrying the transport and the owning disk down
 # from the top (see usb-status for why TRAN needs carrying), and prints each
@@ -43,11 +46,15 @@ def devs(t; d): (.tran // t) as $t | (d // .name) as $d
      else "eject   \($model)   \(.size)" end)
 EOF
 
-items=(); acts=(); targets=()
+items=()
+acts=()
+targets=()
 while IFS= read -r -d '' act && IFS= read -r -d '' target && IFS= read -r -d '' item; do
-    acts+=("$act"); targets+=("$target"); items+=("$item")
+    acts+=("$act")
+    targets+=("$target")
+    items+=("$item")
 done < <(lsblk -J -o NAME,TYPE,TRAN,FSTYPE,LABEL,SIZE,MOUNTPOINT,VENDOR,MODEL |
-         jq -n --raw-output0 "$MENU")
+    jq -n --raw-output0 "$MENU")
 
 [ ${#items[@]} -eq 0 ] && exit 0
 
@@ -56,20 +63,24 @@ i=$(printf '%s\n' "${items[@]}" | fuzzel -d --index --no-exit-on-keyboard-focus-
 target=${targets[$i]}
 
 case "${acts[$i]}" in
-    mount)
-        out=$(udisksctl mount --no-user-interaction -b "$target" 2>&1) || fail "$out" ;;
-    open)
-        exec $term --working-directory="$target" ;;
-    unlock)
-        # udisksctl reads the passphrase from a tty, so it needs a terminal;
-        # the cleartext device shows up as a fresh "mount" entry afterwards.
-        $term udisksctl unlock -b "$target"
-        exec "$0" ;;
-    eject)
-        while read -r part _; do
-            out=$(udisksctl unmount --no-user-interaction -b "$part" 2>&1) || fail "$out"
-        done < <(lsblk -nlo PATH,MOUNTPOINT "$target" | awk 'NF > 1')
-        out=$(udisksctl power-off --no-user-interaction -b "$target" 2>&1) || fail "$out" ;;
+mount)
+    out=$(udisksctl mount --no-user-interaction -b "$target" 2>&1) || fail "$out"
+    ;;
+open)
+    exec $term --working-directory="$target"
+    ;;
+unlock)
+    # udisksctl reads the passphrase from a tty, so it needs a terminal;
+    # the cleartext device shows up as a fresh "mount" entry afterwards.
+    $term udisksctl unlock -b "$target"
+    exec "$0"
+    ;;
+eject)
+    while read -r part _; do
+        out=$(udisksctl unmount --no-user-interaction -b "$part" 2>&1) || fail "$out"
+    done < <(lsblk -nlo PATH,MOUNTPOINT "$target" | awk 'NF > 1')
+    out=$(udisksctl power-off --no-user-interaction -b "$target" 2>&1) || fail "$out"
+    ;;
 esac
 
 pkill -RTMIN+8 -x i3status-rs

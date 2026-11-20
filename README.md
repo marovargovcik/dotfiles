@@ -205,7 +205,7 @@ appear here.
 There is no `snapper-timeline`/`snapper-cleanup` runit service on Void —
 cron does that. `ls /var/service` once §14–§15 are done:
 
-```
+```text
 agetty-tty1..6 avahi-daemon bluetoothd chronyd cronie cups-browsed cupsd dbus dhcpcd
 elogind grub-btrfs ip6tables iptables iwd nanoklogd polkitd snapperd socklog-unix
 tlp udevd
@@ -357,13 +357,13 @@ sudo blkid -s UUID -o value /dev/nvme0n1p2
 
 `/etc/default/grub` (shipped value is `loglevel=4`):
 
-```
+```text
 GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 mem_sleep_default=deep resume=UUID=<swap-uuid>"
 ```
 
 **`/etc/dracut.conf.d/resume.conf`** (without it `resume=` is ignored):
 
-```
+```text
 add_dracutmodules+=" resume "
 ```
 
@@ -398,7 +398,7 @@ fprintd-list maro
 
 **`/etc/pam.d/swaylock`** (replaces the shipped `auth include login`):
 
-```
+```text
 auth  [success=1 default=ignore]  pam_unix.so          try_first_pass nullok
 auth  required                    pam_fprintd.so       timeout=10
 auth  optional                    pam_gnome_keyring.so
@@ -423,7 +423,7 @@ NameResolvingService=resolvconf
 **`/etc/dhcpcd.conf`** — one line appended to the shipped file, so dhcpcd never
 touches the Wi-Fi link iwd manages:
 
-```
+```text
 denyinterfaces wlp0s20f3
 ```
 
@@ -449,7 +449,7 @@ Connect Wi-Fi with `iwctl` or `impala` (bar click).
 Two lines in **`/etc/pam.d/system-login`** (package-managed — re-check after
 any update touching `pam-base`). Result vs shipped file:
 
-```
+```diff
  auth       include    system-auth
 +auth       optional   pam_gnome_keyring.so
  …

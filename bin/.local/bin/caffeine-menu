@@ -13,14 +13,17 @@
 state="$XDG_RUNTIME_DIR/caffeine"
 agents=$'\U000F06A9 agents working: awake until they finish'
 
-choice=$({ elogind-inhibit --list --no-legend | grep -q '^agents ' && printf '%s\n' "$agents"
-           printf '%s\n' off indefinitely '5 min' '10 min' '15 min' '30 min' '60 min'; } |
-         fuzzel -d --no-exit-on-keyboard-focus-loss)
+choice=$(
+    {
+        elogind-inhibit --list --no-legend | grep -q '^agents ' && printf '%s\n' "$agents"
+        printf '%s\n' off indefinitely '5 min' '10 min' '15 min' '30 min' '60 min'
+    } | fuzzel -d --no-exit-on-keyboard-focus-loss
+)
 case "$choice" in
-    ''|"$agents") exit 0 ;;
-    off)          secs= ;;
-    indefinitely) secs=infinity ;;
-    *)            secs=$(( ${choice% min} * 60 )) ;;
+'' | "$agents") exit 0 ;;
+off) secs= ;;
+indefinitely) secs=infinity ;;
+*) secs=$((${choice% min} * 60)) ;;
 esac
 
 # A new choice replaces the running one. The cmdline check skips a pid that
@@ -31,7 +34,7 @@ rm -f "$state"
 
 if [ -n "$secs" ]; then
     until=0
-    [ "$secs" = infinity ] || until=$(( EPOCHSECONDS + secs ))
+    [ "$secs" = infinity ] || until=$((EPOCHSECONDS + secs))
     # setsid gives it its own process group, so off kills the wait along with
     # the inhibitor. The wait checks the wall clock at least once a minute
     # because sleep stops counting while suspended. When the time runs out it

@@ -16,7 +16,7 @@ vim.pack.add({
   'https://github.com/scalameta/nvim-metals',
   'https://github.com/ibhagwan/fzf-lua',
   'https://github.com/sindrets/diffview.nvim',
-  'https://github.com/nvim-tree/nvim-web-devicons',  -- diffview's file icons
+  'https://github.com/nvim-tree/nvim-web-devicons', -- diffview's file icons
 })
 
 -- nvim-treesitter's main branch only installs parsers (no-op when present);
@@ -70,9 +70,7 @@ metals_config.handlers = { ['metals/status'] = require('statusline').on_metals_s
 
 vim.api.nvim_create_autocmd('FileType', {
   pattern = { 'scala', 'sbt', 'java' },
-  callback = function()
-    metals.initialize_or_attach(metals_config)
-  end,
+  callback = function() metals.initialize_or_attach(metals_config) end,
 })
 
 vim.api.nvim_create_autocmd('LspAttach', {
@@ -103,18 +101,24 @@ vim.api.nvim_create_autocmd('BufWritePre', {
 require('fzf-lua').setup({})
 vim.keymap.set('n', '<leader>f', '<cmd>FzfLua files<cr>')
 vim.keymap.set('n', '<leader>g', '<cmd>FzfLua live_grep<cr>')
-vim.keymap.set('n', '<leader>b', '<cmd>FzfLua buffers<cr>',
-  { desc = 'Open buffers (currently loaded)' })
-vim.keymap.set('n', '<leader>r', '<cmd>FzfLua oldfiles<cr>',
-  { desc = 'Recently opened files (MRU)' })
-vim.keymap.set('n', '<leader>q', '<cmd>FzfLua diagnostics_workspace<cr>',
-  { desc = 'Diagnostics (project-wide, fuzzy)' })
+vim.keymap.set('n', '<leader>b', '<cmd>FzfLua buffers<cr>', { desc = 'Open buffers (currently loaded)' })
+vim.keymap.set('n', '<leader>r', '<cmd>FzfLua oldfiles<cr>', { desc = 'Recently opened files (MRU)' })
+vim.keymap.set(
+  'n',
+  '<leader>q',
+  '<cmd>FzfLua diagnostics_workspace<cr>',
+  { desc = 'Diagnostics (project-wide, fuzzy)' }
+)
 
 vim.keymap.set('n', '<leader>dd', '<cmd>DiffviewOpen<cr>', { desc = 'Diff: uncommitted changes' })
 -- origin/HEAD is the remote's default branch; three dots diff from the merge base.
 -- --imply-local shows the right-hand side as the working files, so they stay
 -- editable and LSP attaches.
-vim.keymap.set('n', '<leader>dp', '<cmd>DiffviewOpen origin/HEAD...HEAD --imply-local<cr>',
-  { desc = 'Diff: this branch against the default branch (PR view)' })
+vim.keymap.set(
+  'n',
+  '<leader>dp',
+  '<cmd>DiffviewOpen origin/HEAD...HEAD --imply-local<cr>',
+  { desc = 'Diff: this branch against the default branch (PR view)' }
+)
 vim.keymap.set('n', '<leader>dh', '<cmd>DiffviewFileHistory %<cr>', { desc = 'Diff: history of this file' })
 vim.keymap.set('n', '<leader>dc', '<cmd>DiffviewClose<cr>', { desc = 'Diff: close' })

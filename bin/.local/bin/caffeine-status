@@ -8,9 +8,9 @@ state="$XDG_RUNTIME_DIR/caffeine"
 # The cmdline check skips a pid that has since been reused by something else.
 text=
 if read -r pid until 2>/dev/null <"$state" && grep -qs caffeine "/proc/$pid/cmdline" &&
-   { [ "$until" -eq 0 ] || [ "$until" -gt "$EPOCHSECONDS" ]; }; then
+    { [ "$until" -eq 0 ] || [ "$until" -gt "$EPOCHSECONDS" ]; }; then
     text=$'\U000F0176'
-    [ "$until" -eq 0 ] || text+=" $(( (until - EPOCHSECONDS + 59) / 60 ))m"
+    [ "$until" -eq 0 ] || text+=" $(((until - EPOCHSECONDS + 59) / 60))m"
 fi
 elogind-inhibit --list --no-legend | grep -q '^agents ' &&
     text=$'\U000F06A9'"${text:+ $text}"

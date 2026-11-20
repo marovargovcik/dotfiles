@@ -73,7 +73,10 @@ live_state="#{?$live,#{@agent_state},}"
 # already in FZF_DEFAULT_OPTS come later and win.
 export FZF_DEFAULT_OPTS="--layout=reverse ${FZF_DEFAULT_OPTS:-}"
 
-die() { echo "tt: $*" >&2; exit 1; }
+die() {
+    echo "tt: $*" >&2
+    exit 1
+}
 
 # ── tmux backend ────────────────────────────────────────────────────────────
 # Everything that talks to tmux. Another multiplexer would replace these.
@@ -250,7 +253,10 @@ agent_proc() {
     local pid=$PPID parent pg tpg comm
     while [ "${pid:-0}" -gt 1 ]; do
         read -r parent pg tpg comm < <(ps -o ppid=,pgid=,tpgid=,comm= -p "$pid") || return 1
-        [ "${comm##*/}" = "$1" ] && { echo "$pid $pg $tpg"; return; }
+        [ "${comm##*/}" = "$1" ] && {
+            echo "$pid $pg $tpg"
+            return
+        }
         pid=$parent
     done
     return 1
@@ -294,8 +300,14 @@ log_drop() { sed "$1d" "$log" >"$log.tmp" && mv "$log.tmp" "$log"; }
 archive() {
     local w=$1 path repo label branch trash=
     IFS=$us read -r path repo label < <(tmux display -p -t "$w" "#{@task_path}$us#{@repo}$us$title")
-    [ -n "$path" ] || { echo "tt: $w is not a task window" >&2; return 1; }
-    [ -z "$(git -C "$path" status --porcelain)" ] || { echo "tt: ${path##*/} has uncommitted changes; kept" >&2; return 1; }
+    [ -n "$path" ] || {
+        echo "tt: $w is not a task window" >&2
+        return 1
+    }
+    [ -z "$(git -C "$path" status --porcelain)" ] || {
+        echo "tt: ${path##*/} has uncommitted changes; kept" >&2
+        return 1
+    }
     branch=$(git -C "$path" branch --show-current)
     # Claude Code puts a spinner before the conversation title.
     [[ $label =~ ^[^[:alnum:]]+\ (.*)$ ]] && label=${BASH_REMATCH[1]}
@@ -358,7 +370,7 @@ status_of() {
     pr=$(gh pr view --json state -q .state 2>/dev/null) || pr=
     base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=main
     ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || ahead=0
-    n=$(($(git status --porcelain | wc -l)))  # BSD wc pads with spaces
+    n=$(($(git status --porcelain | wc -l))) # BSD wc pads with spaces
     remote=refs/remotes/origin/$(git branch --show-current)
     case $agent in working | blocked) tags+=("claude $agent") ;; esac
     [ "$n" -gt 0 ] && tags+=("$n uncommitted")
@@ -391,8 +403,9 @@ rows() {
         # Long branches are cut so the status after them stays in view.
         branch=$(git -C "$path" branch --show-current)
         [ ${#branch} -le 28 ] || branch="${branch:0:27}…"
-        { printf '%s\t%-12s %-34.34s %s%*s ' "$w" "${repo##*/}" "$label" "$branch" $((28 - ${#branch})) ''
-          if [ "${1:-}" = --status ]; then status_of "$path" "$agent"; else echo; fi
+        {
+            printf '%s\t%-12s %-34.34s %s%*s ' "$w" "${repo##*/}" "$label" "$branch" $((28 - ${#branch})) ''
+            if [ "${1:-}" = --status ]; then status_of "$path" "$agent"; else echo; fi
         } >"$tmp/$(printf %03d $i)" &
     done < <(mux_tasks | fields)
     wait
@@ -524,15 +537,23 @@ up)
                 s=$(mux_project "$repo")
                 # The new session's own orch takes the first orchestrator; with
                 # none recorded, it resumes the newest conversation, as tt proj does.
-                if [ "$role" != orchestrator ]; then mux_run "$p" "$(agent_cmd "$repo" resume '')"; p=; fi
+                if [ "$role" != orchestrator ]; then
+                    mux_run "$p" "$(agent_cmd "$repo" resume '')"
+                    p=
+                fi
             else
                 p=
             fi
             if [ -z "$p" ]; then
                 case $role in
                 orchestrator) p=$(mux_create_orch "$s" "$repo") ;;
-                *) if [ -n "$task" ]; then p=$(mux_create_task "$s" "$cwd" "$task")
-                   else p=$(tmux new-window -d -P -F '#{pane_id}' -t "$s:" -c "$cwd"); fi ;;
+                *)
+                    if [ -n "$task" ]; then
+                        p=$(mux_create_task "$s" "$cwd" "$task")
+                    else
+                        p=$(tmux new-window -d -P -F '#{pane_id}' -t "$s:" -c "$cwd")
+                    fi
+                    ;;
                 esac
             fi
         elif tmux has-session -t "=$sname" 2>/dev/null; then
@@ -620,7 +641,10 @@ archive)
     exit $rc
     ;;
 archived)
-    [ -s "$log" ] || { echo "nothing archived"; exit 0; }
+    [ -s "$log" ] || {
+        echo "nothing archived"
+        exit 0
+    }
     awk -F'\t' '{ n = split($2, r, "/"); printf "%s  %-14s %-28s %s\n", $1, r[n], $3, $6 }' "$log"
     ;;
 restore)
@@ -666,8 +690,14 @@ send)
     fi
     case $state in
     blocked) die "$pane is waiting on you; nothing sent" ;;
-    working) mux_send "$pane" "$handoff"; echo "$pane: queued (it's working)" ;;
-    *) mux_send "$pane" "$handoff"; echo "$pane: sent" ;;
+    working)
+        mux_send "$pane" "$handoff"
+        echo "$pane: queued (it's working)"
+        ;;
+    *)
+        mux_send "$pane" "$handoff"
+        echo "$pane: sent"
+        ;;
     esac
     ;;
 read)
@@ -704,16 +734,16 @@ _preview)
     fi
     mapfile -t panes < <(tmux list-panes -t "$2" -F "#{pane_id}$tab#{session_name}:#{window_index}.#{pane_index}$tab#{?$live,#{?#{@agent_state},#{@agent_state},idle},#{pane_current_command}}$tab#{b:pane_current_path}$tab#{pane_active}")
     rows=${FZF_PREVIEW_LINES:-40} cols=${FZF_PREVIEW_COLUMNS:-80}
-    each=$(( rows / ${#panes[@]} - 1 ))
-    (( each < 1 )) && each=1
+    each=$((rows / ${#panes[@]} - 1))
+    ((each < 1)) && each=1
     for p in "${panes[@]}"; do
         IFS=$tab read -r id name what dir active <<<"$p"
         tag=" $name  $what  $dir "
         [ "$active" = 1 ] && tag+=" ◀ active "
         printf '\033[7m%-*.*s\033[0m\n' "$cols" "$cols" "$tag"
         mapfile -t out < <(capture "$id" | tail -n "$each")
-        (( ${#out[@]} )) && printf '%s\033[0m\n' "${out[@]}"
-        for (( i = ${#out[@]}; i < each; i++ )); do echo; done
+        ((${#out[@]})) && printf '%s\033[0m\n' "${out[@]}"
+        for ((i = ${#out[@]}; i < each; i++)); do echo; done
     done
     ;;
 _kill)
@@ -743,7 +773,8 @@ orch)
         pane=$(mux_create_orch "$s" "$root")
         mux_run "$pane" "$(agent_cmd "$root" new '')"
         # From a key binding (run-shell) there is no tty: the client is named.
-        if [ -n "${4:-}" ]; then tmux switch-client -c "$4" -t "$pane" \; select-window -t "$pane"
+        if [ -n "${4:-}" ]; then
+            tmux switch-client -c "$4" -t "$pane" \; select-window -t "$pane"
         elif [ -t 0 ] && [ -n "${TMUX:-}" ]; then mux_focus "$pane"; fi
         echo "$pane"
         ;;

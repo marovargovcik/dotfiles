@@ -16,13 +16,9 @@ local progress = {}
 ---@type table<integer, table<string, table>> client id -> statusType -> MetalsStatusParams
 local metals = {}
 
-local function escape(text)
-  return (text:gsub('%%', '%%%%'))
-end
+local function escape(text) return (text:gsub('%%', '%%%%')) end
 
-local function highlight(group, text)
-  return group and ('%%#%s#%s%%*'):format(group, text) or text
-end
+local function highlight(group, text) return group and ('%%#%s#%s%%*'):format(group, text) or text end
 
 -- Redraws while work is in progress, to animate the spinner and to bring in
 -- tasks once they outlast PROGRESS_DELAY_MS.
@@ -70,8 +66,12 @@ function M.on_metals_status(_, status, ctx)
 
   -- The text of a failing build server is still just its name; the reason is
   -- in the tooltip. Say it once, when the server enters that state.
-  if type == 'bsp' and LEVEL_HL[status.level] and status.tooltip
-      and not (previous and previous.level == status.level) then
+  if
+    type == 'bsp'
+    and LEVEL_HL[status.level]
+    and status.tooltip
+    and not (previous and previous.level == status.level)
+  then
     vim.notify(status.tooltip, vim.log.levels[status.level:upper()])
   end
   vim.cmd.redrawstatus()
